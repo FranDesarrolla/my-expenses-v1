@@ -1,3 +1,8 @@
+# Environment variables (credentials - NEVER commit!)
+.env
+.env.local
+.env.*.local
+
 # Logs
 logs
 *.log
@@ -7,9 +12,20 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+dist-ssr/
+.d/
+
+# Package lock (we use bun, not npm)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Local environment overrides
 *.local
 
 # Editor directories and files
