@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Expenses</title>
+    <meta name="description" content="A precise, mechanical ledger for tracking expenses, fixed costs, and credit card installments. No spreadsheet required.">
+    <meta name="author" content="Ledger" />
+
+    
+    
+    <meta property="og:type" content="website" />
+
+    <script>
+      // Apply stored theme before paint to avoid flash
+      (function () {
+        try {
+          var t = localStorage.getItem('ledger-theme') || 'dark';
+          var root = document.documentElement;
+          root.classList.remove('light', 'dark');
+          root.classList.add(t);
+        } catch (e) {}
+      })();
+    </script>
+    
+  
+  
+  
+  <meta property="og:image" content="https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/5e50a074-8cc8-41fb-9b7a-d4a9958df983/id-preview-fa843b62--b52263f0-8f2e-49d4-bfa2-4106e53df71f.lovable.app-1777309762285.png">
+  <meta name="twitter:image" content="https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/5e50a074-8cc8-41fb-9b7a-d4a9958df983/id-preview-fa843b62--b52263f0-8f2e-49d4-bfa2-4106e53df71f.lovable.app-1777309762285.png">
+  <meta name="twitter:card" content="summary_large_image">
+  
+  
+  
+  
+  <meta property="og:title" content="My Expenses">
+  <meta name="twitter:title" content="My Expenses">
+  <meta property="og:description" content="A precise, mechanical ledger for tracking expenses, fixed costs, and credit card installments. No spreadsheet required.">
+  <meta name="twitter:description" content="A precise, mechanical ledger for tracking expenses, fixed costs, and credit card installments. No spreadsheet required.">
+</head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

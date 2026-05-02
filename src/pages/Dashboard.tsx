@@ -1,0 +1,986 @@
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { AppLayout } from "@/components/AppLayout";
+import { MonthSelector } from "@/components/MonthSelector";
+import { AnimatedNumber } from "@/components/AnimatedNumber";
+import { Button } from "@/components/ui/button";
+import { MonthlyExpensesList } from "@/components/MonthlyExpensesList";
+import { OverviewCalendar } from "@/components/OverviewCalendar";
+import { useNavigate } from "react-router-dom";
+import { cn } from "@/lib/utils";
+import {
+  Wallet,
+  CreditCard,
+  Receipt,
+  CalendarDays,
+  DollarSign,
+  PiggyBank,
+  Download,
+} from "lucide-react";
+import {
+  startOfMonth,
+  startOfMonthISO,
+  endOfMonthISO,
+  addMonths,
+  monthShort,
+  formatMoney,
+} from "@/lib/format";
+import { startOfMonth as dateFnsStartOfMonth, endOfMonth, format as formatDate } from "date-fns";
+import * as XLSX from "xlsx";
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from "recharts";
+
+interface Category {
+  id: string;
+  name: string;
+  color: string;
+}
+
+interface Expense {
+  id: string;
+  amount: number;
+  category_id: string | null;
+  date: string;
+  paid: boolean;
+}
+
+interface FixedExpense {
+  id: string;
+  amount: number;
+  category_id: string | null;
+  description: string;
+  start_date: string;
+  end_date: string | null;
+}
+
+interface FixedPayment {
+  fixed_expense_id: string;
+  month: string;
+  paid: boolean;
+  paid_at: string | null;
+  amount?: number;
+}
+
+interface ChargePayment {
+  paid: boolean;
+  charge_id: string;
+}
+
+interface Charge {
+  id: string;
+  description: string;
+  card_id: string;
+  monthly_amount: number;
+  category_id: string | null;
+  type: string;
+  current_installment: number;
+  total_installments: number;
+  start_date: string;
+  active?: boolean;
+}
+
+interface Card {
+  id: string;
+  name: string;
+  color: string;
+}
+
+interface Wallet {
+  id: string;
+  name: string;
+  color: string;
+}
+
+interface SalaryRow {
+  wallet_account_id: string | null;
+  amount: number;
+  month: string;
+}
+
+interface ExtraIncomeRow {
+  wallet_account_id: string | null;
+  amount: number;
+  date: string;
+  concept: string | null;
+}
+
+interface Distribution {
+  wallet_account_id: string | null;
+  amount: number;
+}
+
+interface ExpenseRow {
+  wallet_account_id: string | null;
+  amount: number;
+}
+
+interface ExpensePayment {
+  expense_id: string;
+  paid: boolean;
+}
+
+interface FixedRow {
+  id: string;
+  wallet_account_id: string | null;
+  amount: number;
+  start_date: string;
+  end_date: string | null;
+  description: string;
+  category_id: string | null;
+}
+
+interface Transfer {
+  id: string;
+  from_wallet_id: string | null;
+  to_wallet_id: string | null;
+  amount: number;
+  date: string;
+  notes: string | null;
+}
+
+interface CardPayment {
+  id: string;
+  wallet_account_id: string | null;
+  amount: number;
+  month: string;
+}
+
+export default function Dashboard() {
+  const [month, setMonth] = useState(startOfMonth(new Date()));
+  const [view, setView] = useState<"dashboard" | "list" | "overview">("overview");
+  const [showPaidOnly, setShowPaidOnly] = useState(false);
+  const navigate = useNavigate();
+
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [fixed, setFixed] = useState<FixedExpense[]>([]);
+  const [fixedPays, setFixedPays] = useState<FixedPayment[]>([]);
+  const [salaryAmt, setSalaryAmt] = useState(0);
+  const [extraIncomeAmt, setExtraIncomeAmt] = useState(0);
+  const [sixMonths, setSixMonths] = useState<{ label: string; spent: number; current: boolean }[]>([]);
+  const [cards, setCards] = useState<Card[]>([]);
+  const [charges, setCharges] = useState<Charge[]>([]);
+  const [chargePays, setChargePays] = useState<ChargePayment[]>([]);
+
+  const [wallets, setWallets] = useState<Wallet[]>([]);
+  const [salaries, setSalaries] = useState<SalaryRow[]>([]);
+  const [extraIncomes, setExtraIncomes] = useState<ExtraIncomeRow[]>([]);
+  const [allDistributions, setAllDistributions] = useState<Distribution[]>([]);
+  const [walletExpenses, setWalletExpenses] = useState<ExpenseRow[]>([]);
+  const [expensePayments, setExpensePayments] = useState<ExpensePayment[]>([]);
+  const [fixedExpenses, setFixedExpenses] = useState<FixedRow[]>([]);
+  const [fixedPayments, setFixedPayments] = useState<FixedPayment[]>([]);
+  const [transfers, setTransfers] = useState<Transfer[]>([]);
+  const [cardPayments, setCardPayments] = useState<CardPayment[]>([]);
+
+  useEffect(() => {
+    void loadAll();
+  }, [month]);
+
+  async function loadAll() {
+    const start = startOfMonthISO(month);
+    const end = endOfMonthISO(month);
+
+    const [
+      cats,
+      exps,
+      sal,
+      cds,
+      chs,
+      pays,
+      fxs,
+      fxPays,
+      extra,
+      ws,
+      allDist,
+      allExp,
+      allFx,
+      allFxPays,
+      tr,
+      cp,
+      expPays,
+    ] = await Promise.all([
+      supabase.from("categories").select("*").order("name"),
+      supabase.from("expenses").select("id, amount, description, date, category_id, wallet_account_id").gte("date", start).lte("date", end),
+      supabase.from("salary").select("wallet_account_id, amount, month"),
+      supabase.from("cards").select("*"),
+      supabase.from("card_charges").select("*"),
+      supabase.from("charge_payments").select("paid, charge_id").eq("month", start),
+      supabase.from("fixed_expenses").select("*").lte("start_date", end).or("end_date.is.null,end_date.gte." + start),
+      supabase.from("fixed_expense_payments").select("fixed_expense_id, month, paid, paid_at").eq("month", start),
+      supabase.from("extra_income" as never).select("wallet_account_id, amount, date, concept").gte("date", start).lte("date", end),
+      supabase.from("wallet_accounts").select("*").order("name"),
+      supabase.from("wallet_distributions").select("wallet_account_id, amount"),
+      supabase.from("expenses").select("id, wallet_account_id, amount"),
+      supabase.from("fixed_expenses").select("id, wallet_account_id, amount, description, category_id, start_date, end_date").lte("start_date", end).or("end_date.is.null,end_date.gte." + start),
+      supabase.from("fixed_expense_payments").select("fixed_expense_id, month, paid, paid_at"),
+      supabase.from("wallet_transfers").select("from_wallet_id, to_wallet_id, amount"),
+      (supabase.from("card_payments" as any).select("wallet_account_id, amount, month") as any),
+      (supabase.from("expense_payments" as any).select("expense_id, paid") as any),
+    ]);
+
+    setCategories(cats.data ?? []);
+    setExpenses((exps.data ?? []) as Expense[]);
+    setSalaryAmt(((sal.data ?? []) as { amount: number }[]).reduce((s, r) => s + Number(r.amount), 0));
+    setCards(cds.data ?? []);
+    setCharges((chs.data ?? []) as Charge[]);
+    setChargePays((pays.data ?? []) as ChargePayment[]);
+    setFixed((fxs.data ?? []) as FixedExpense[]);
+    setFixedPays((fxPays.data ?? []) as FixedPayment[]);
+    setExtraIncomeAmt(((extra.data ?? []) as { amount: number }[]).reduce((s, r) => s + Number(r.amount), 0));
+
+    setWallets((ws.data ?? []) as Wallet[]);
+    setSalaries((sal.data ?? []) as SalaryRow[]);
+    setExtraIncomes((extra.data ?? []) as ExtraIncomeRow[]);
+    setAllDistributions((allDist.data ?? []) as Distribution[]);
+    setWalletExpenses((allExp.data ?? []) as ExpenseRow[]);
+    setExpensePayments((expPays.data ?? []) as ExpensePayment[]);
+    setFixedExpenses((allFx.data ?? []) as FixedRow[]);
+    setFixedPayments((allFxPays.data ?? []) as FixedPayment[]);
+    setTransfers((tr.data ?? []) as Transfer[]);
+    setCardPayments((cp.data ?? []) as CardPayment[]);
+
+    const sixMonthsStart = addMonths(startOfMonth(month), -5);
+    const sixMonthsEnd = endOfMonth(month);
+    const sixStartStr = startOfMonthISO(sixMonthsStart);
+    const sixEndStr = endOfMonthISO(month);
+
+    const [sixExpData, sixExpPaysData, sixFixedPaysData, sixChargePaysData, sixSalData] = await Promise.all([
+      supabase.from("expenses").select("id, amount, date").gte("date", sixStartStr).lte("date", sixEndStr),
+      (supabase.from("expense_payments" as any).select("expense_id, paid, paid_at").gte("paid_at", sixStartStr).lte("paid_at", sixEndStr) as any),
+      (supabase.from("fixed_expense_payments" as any).select("fixed_expense_id, month, paid, amount").gte("month", sixStartStr).lte("month", sixEndStr) as any),
+      supabase.from("charge_payments").select("charge_id, month, paid").gte("month", sixStartStr).lte("month", sixEndStr),
+      supabase.from("salary").select("month, amount").gte("month", sixStartStr).lte("month", sixEndStr),
+    ]);
+
+    const allExpenses = sixExpData.data ?? [];
+    const allExpPays = (sixExpPaysData.data ?? []) as { expense_id: string; paid: boolean }[];
+    const allFixedPays = (sixFixedPaysData.data ?? []) as { fixed_expense_id: string; month: string; paid: boolean; amount?: number }[];
+    const allChargePays = (sixChargePaysData.data ?? []) as { charge_id: string; month: string; paid: boolean }[];
+    const allSalary = sixSalData.data ?? [];
+
+    const fixedList = (fxs.data ?? []) as FixedExpense[];
+    const allCharges = (chs.data ?? []) as Charge[];
+
+    const months: { label: string; spent: number; current: boolean }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const m = addMonths(month, -i);
+      const ms = startOfMonthISO(m);
+      const me = endOfMonthISO(m);
+
+      const monthExpIds = allExpenses.filter(e => e.date >= ms && e.date <= me).map(e => e.id);
+      const paidExpIds = new Set(allExpPays.filter(p => p.paid && monthExpIds.includes(p.expense_id)).map(p => p.expense_id));
+      const expTotal = allExpenses
+        .filter(e => paidExpIds.has(e.id))
+        .reduce((s, r) => s + Number(r.amount), 0);
+
+      const monthFixedPays = allFixedPays.filter(p => p.month === ms && p.paid);
+      const activeFixedForMonth = fixedList.filter(f => f.start_date <= me && (!f.end_date || f.end_date >= ms));
+      const fixedSum = activeFixedForMonth.reduce((s, f) => {
+        const payment = monthFixedPays.find(p => p.fixed_expense_id === f.id);
+        return s + (payment ? (payment.amount ?? Number(f.amount)) : 0);
+      }, 0);
+
+      const monthChargePays = allChargePays.filter(p => p.month === ms && p.paid);
+      const activeChargesForMonth = allCharges.filter(c => {
+        const start = new Date(c.start_date);
+        const monthsSinceStart = (m.getFullYear() - start.getFullYear()) * 12 + (m.getMonth() - start.getMonth());
+        if (c.type === "one-time") {
+          return start.getFullYear() === m.getFullYear() && start.getMonth() === m.getMonth();
+        }
+        if (c.type === "recurring") {
+          return monthsSinceStart >= 0 && c.active !== false;
+        }
+        return monthsSinceStart >= 0 && monthsSinceStart < c.total_installments;
+      });
+      const chargesSum = activeChargesForMonth.reduce((s, c) => {
+        const isPaid = monthChargePays.some(p => p.charge_id === c.id);
+        return s + (isPaid ? Number(c.monthly_amount) : 0);
+      }, 0);
+
+      months.push({ label: monthShort(m), spent: expTotal + fixedSum + chargesSum, current: i === 0 });
+    }
+    setSixMonths(months);
+  }
+
+  const activeCharges = useMemo(() => computeActiveCharges(charges, month), [charges, month]);
+
+  const fixedTotal = fixed.reduce((s, f) => s + Number(f.amount), 0);
+  const chargesTotal = activeCharges.reduce((s, c) => s + Number(c.monthly_amount), 0);
+
+  const isFixedPaid = (id: string) => fixedPays.find((p) => p.fixed_expense_id === id)?.paid ?? false;
+  const getFixedAmount = (f: FixedExpense) => {
+    const payment = fixedPays.find(p => p.fixed_expense_id === f.id);
+    return payment?.amount ?? f.amount;
+  };
+  const isChargePaid = (id: string) => chargePays.find((p) => p.charge_id === id)?.paid ?? false;
+  const isExpensePaid = (id: string) => expensePayments.find((p) => p.expense_id === id && p.paid)?.paid ?? false;
+
+  const paidExpenses = expenses.filter((e) => isExpensePaid(e.id)).reduce((s, e) => s + Number(e.amount), 0);
+  const paidFixed = fixed.filter((f) => isFixedPaid(f.id)).reduce((s, f) => s + Number(getFixedAmount(f)), 0);
+  const paidCharges = activeCharges.filter((c) => isChargePaid(c.id)).reduce((s, c) => s + Number(c.monthly_amount), 0);
+  const spent = paidExpenses + paidFixed + paidCharges;
+
+  const unpaidExpenses = expenses.filter((e) => !isExpensePaid(e.id)).reduce((s, e) => s + Number(e.amount), 0);
+  const unpaidFixed = fixed.filter((f) => !isFixedPaid(f.id)).reduce((s, f) => s + Number(getFixedAmount(f)), 0);
+  const unpaidCharges = activeCharges.filter((c) => !isChargePaid(c.id)).reduce((s, c) => s + Number(c.monthly_amount), 0);
+  const committed = unpaidExpenses + unpaidFixed + unpaidCharges;
+
+  const totalIncome = salaryAmt + extraIncomeAmt;
+  const available = totalIncome - spent;
+
+  const byCategory = useMemo(() => {
+    const map = new Map<string, number>();
+    const add = (catId: string | null, amt: number) => {
+      const k = catId ?? "uncat";
+      map.set(k, (map.get(k) ?? 0) + amt);
+    };
+    expenses.forEach((e) => add(e.category_id, Number(e.amount)));
+    fixed.forEach((f) => add(f.category_id, Number(f.amount)));
+    activeCharges.forEach((c) => add(c.category_id, Number(c.monthly_amount)));
+    return Array.from(map.entries())
+      .map(([id, value]) => {
+        const c = categories.find((c) => c.id === id);
+        return { name: c?.name ?? "Uncategorized", value, color: c?.color ?? "#8B867D" };
+      })
+      .sort((a, b) => b.value - a.value);
+  }, [expenses, fixed, activeCharges, categories]);
+
+  const topCats = byCategory.slice(0, 5);
+  const totalForPct = byCategory.reduce((s, x) => s + x.value, 0) || 1;
+
+  const walletBalances = useMemo(() => {
+    return wallets.map((w) => {
+      const fromSalary = salaries
+        .filter((s) => s.wallet_account_id === w.id)
+        .reduce((s, x) => s + Number(x.amount), 0);
+      const fromExtra = extraIncomes
+        .filter((s) => s.wallet_account_id === w.id)
+        .reduce((s, x) => s + Number(x.amount), 0);
+      const fromDistributions = allDistributions
+        .filter((d) => d.wallet_account_id === w.id)
+        .reduce((s, d) => s + Number(d.amount), 0);
+      const transfersIn = transfers
+        .filter((t) => t.to_wallet_id === w.id)
+        .reduce((s, t) => s + Number(t.amount), 0);
+      const transfersOut = transfers
+        .filter((t) => t.from_wallet_id === w.id)
+        .reduce((s, t) => s + Number(t.amount), 0);
+      const credited = fromSalary + fromExtra + fromDistributions + transfersIn - transfersOut;
+
+      const spentOneOff = walletExpenses
+        .filter((x) => {
+          const isPaid = expensePayments.find((p) => p.expense_id === x.id && p.paid)?.paid ?? false;
+          return x.wallet_account_id === w.id && isPaid;
+        })
+        .reduce((s, x) => s + Number(x.amount), 0);
+      const spentFixed = fixedExpenses
+        .filter((f) => f.wallet_account_id === w.id)
+        .reduce((s, f) => {
+          const paidMonths = fixedPayments.filter((p) => p.fixed_expense_id === f.id && p.paid);
+          const total = paidMonths.reduce((sum, p) => sum + (p.amount ?? Number(f.amount)), 0);
+          return s + total;
+        }, 0);
+      const spentCardPayments = cardPayments
+        .filter((cp) => cp.wallet_account_id === w.id)
+        .reduce((s, cp) => s + Number(cp.amount), 0);
+      return { wallet: w, balance: credited - spentOneOff - spentFixed - spentCardPayments };
+    });
+  }, [wallets, salaries, extraIncomes, allDistributions, transfers, walletExpenses, fixedExpenses, fixedPayments, cardPayments, expensePayments]);
+
+  const walletTotal = walletBalances.reduce((s, w) => s + w.balance, 0);
+
+  const monthISO = startOfMonthISO(month);
+  const monthStart = startOfMonthISO(month);
+  const monthEnd = endOfMonthISO(month);
+
+  const statementRows = useMemo(() => {
+    const rows: { date: string; type: string; description: string; category: string; wallet: string; amount: number; flow: string; paid: boolean }[] = [];
+
+    salaries.forEach(s => {
+      const w = wallets.find(w => w.id === s.wallet_account_id);
+      rows.push({
+        date: monthStart,
+        type: "Salary",
+        description: "Salary",
+        category: "-",
+        wallet: w?.name ?? "-",
+        amount: Number(s.amount),
+        flow: "IN",
+        paid: true,
+      });
+    });
+
+    extraIncomes.forEach(ei => {
+      const w = wallets.find(w => w.id === ei.wallet_account_id);
+      rows.push({
+        date: ei.date,
+        type: "Extra Income",
+        description: ei.concept ?? "Extra Income",
+        category: "-",
+        wallet: w?.name ?? "-",
+        amount: Number(ei.amount),
+        flow: "IN",
+        paid: true,
+      });
+    });
+
+    expenses.forEach(e => {
+      const cat = categories.find(c => c.id === e.category_id);
+      const w = wallets.find(w => w.id === e.wallet_account_id);
+      const isPaid = expensePayments.find(p => p.expense_id === e.id && p.paid)?.paid ?? false;
+      rows.push({
+        date: e.date,
+        type: "Expense",
+        description: e.description ?? "Expense",
+        category: cat ? { name: cat.name, color: cat.color } : null,
+        wallet: w?.name ?? "-",
+        amount: Number(e.amount),
+        flow: "OUT",
+        paid: isPaid,
+      });
+    });
+
+    const monthFixedPays = fixedPayments.filter(p => p.month === monthISO && p.paid);
+    fixedExpenses.forEach(f => {
+      if (f.start_date > monthEnd || (f.end_date && f.end_date < monthStart)) return;
+      const cat = categories.find(c => c.id === f.category_id);
+      const w = wallets.find(w => w.id === f.wallet_account_id);
+      const payment = monthFixedPays.find(p => p.fixed_expense_id === f.id);
+      const amount = payment?.amount ?? Number(f.amount);
+      const date = payment?.paid_at ?? f.start_date;
+      rows.push({
+        date: date,
+        type: "Fixed",
+        description: f.description ?? "Fixed Expense",
+        category: cat ? { name: cat.name, color: cat.color } : null,
+        wallet: w?.name ?? "-",
+        amount: amount,
+        flow: "OUT",
+        paid: !!payment,
+      });
+    });
+
+    cardPayments.forEach(cp => {
+      const card = cards.find(c => c.id === cp.card_id);
+      const w = wallets.find(w => w.id === cp.wallet_account_id);
+      rows.push({
+        date: cp.date,
+        type: "Card",
+        description: card?.name ?? "Card Payment",
+        category: null,
+        wallet: w?.name ?? "-",
+        amount: Number(cp.amount),
+        flow: "OUT",
+        paid: true,
+      });
+    });
+
+    rows.sort((a, b) => (a.date ?? '1970-01-01').localeCompare(b.date ?? '1970-01-01'));
+
+    return rows;
+  }, [salaries, extraIncomes, expenses, fixedExpenses, fixedPayments, cardPayments, wallets, categories, monthISO, monthStart, monthEnd]);
+
+  const filteredRows = showPaidOnly 
+    ? statementRows.filter(r => r.flow === "IN" || r.paid)
+    : statementRows;
+
+  const totalIn = filteredRows.filter(r => r.flow === "IN").reduce((s, r) => s + r.amount, 0);
+  const totalOut = filteredRows.filter(r => r.flow === "OUT" && r.paid).reduce((s, r) => s + r.amount, 0);
+  const netBalance = totalIn - totalOut;
+
+  const handleExport = () => {
+    const data = filteredRows.map(r => ({
+      Date: r.date,
+      Type: r.type,
+      Description: r.description,
+      "Category/Wallet": r.flow === "IN" ? r.wallet : r.category,
+      Amount: r.amount,
+      Flow: r.flow,
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, `Statement - ${formatDate(month, "MMMM yyyy")}`);
+    XLSX.writeFile(wb, `statement-${formatDate(month, "yyyy-MM")}.xlsx`);
+  };
+
+  return (
+    <AppLayout
+      title="Dashboard"
+      subtitle="Command your cashflow."
+      actions={<MonthSelector value={month} onChange={setMonth} />}
+    >
+      <div className="mb-6 inline-flex rounded-full border border-border bg-surface p-1">
+        <button
+          type="button"
+          onClick={() => setView("overview")}
+          className={cn(
+            "rounded-full px-4 py-1.5 text-[12.5px] transition-colors",
+            view === "overview"
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Overview
+        </button>
+        <button
+          type="button"
+          onClick={() => setView("dashboard")}
+          className={cn(
+            "rounded-full px-4 py-1.5 text-[12.5px] transition-colors",
+            view === "dashboard"
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Dashboard
+        </button>
+        <button
+          type="button"
+          onClick={() => setView("list")}
+          className={cn(
+            "rounded-full px-4 py-1.5 text-[12.5px] transition-colors",
+            view === "list"
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Monthly Statement
+        </button>
+      </div>
+
+      {view === "dashboard" ? (
+        <>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <SummaryCard label="Monthly Salary" value={salaryAmt} />
+            <SummaryCard
+              label="Extra Income"
+              value={extraIncomeAmt}
+              tone={extraIncomeAmt > 0 ? "positive" : "default"}
+              formula="Non-salary earnings"
+            />
+            <SummaryCard
+              label="Total Income"
+              value={totalIncome}
+              tone="positive"
+              formula="Salary + Extra"
+            />
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <SummaryCard
+              label="Spent"
+              value={spent}
+              tone={spent > totalIncome && totalIncome > 0 ? "negative" : "default"}
+              formula="Paid expenses + fixed + charges"
+            />
+            <SummaryCard
+              label="Committed"
+              value={committed}
+              tone={committed > 0 ? "negative" : "default"}
+              formula="Pending to pay"
+            />
+            <SummaryCard
+              label="Available Balance"
+              value={available}
+              tone={available < 0 ? "negative" : "positive"}
+              formula="Income − Spent"
+            />
+          </div>
+
+          {walletBalances.length > 0 && (
+            <div className="mt-6">
+              <div className="label-mono mb-3">Wallet Snapshot</div>
+              <div
+                className="grid gap-3"
+                style={{ gridTemplateColumns: `repeat(auto-fit, minmax(180px, 1fr))` }}
+              >
+                {walletBalances.map(({ wallet, balance }) => (
+                  <div key={wallet.id} className="rounded-md border border-border bg-surface p-4">
+                    <div className="mb-2 flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: wallet.color }} />
+                      <div className="text-[12.5px] text-muted-foreground">{wallet.name}</div>
+                    </div>
+                    <div
+                      className={cn(
+                        "num text-[18px] tracking-tight",
+                        balance < 0 ? "text-destructive" : "text-foreground"
+                      )}
+                    >
+                      {formatMoney(balance)}
+                    </div>
+                  </div>
+                ))}
+                <div className="rounded-md border border-primary/40 bg-primary/5 p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-primary" />
+                    <div className="text-[12.5px] text-muted-foreground">Total</div>
+                  </div>
+                  <div
+                    className={cn(
+                      "num text-[18px] tracking-tight",
+                      walletTotal < 0 ? "text-destructive" : "text-foreground"
+                    )}
+                  >
+                    {formatMoney(walletTotal)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-12 items-stretch">
+            <Panel className="lg:col-span-4 flex flex-col">
+              <PanelHeader title="Expenses by Category" />
+              {byCategory.length === 0 ? (
+                <Empty>No expenses recorded for this period.</Empty>
+              ) : (
+                <>
+                  <div className="flex-1 min-h-[200px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={byCategory}
+                          dataKey="value"
+                          innerRadius={55}
+                          outerRadius={85}
+                          stroke="hsl(var(--surface))"
+                          strokeWidth={2}
+                        >
+                          {byCategory.map((d, i) => (
+                            <Cell key={i} fill={d.color} />
+                          ))}
+                        </Pie>
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <ul className="mt-3 space-y-1.5">
+                    {byCategory.map((d) => (
+                      <li key={d.name} className="flex items-center justify-between text-[12px]">
+                        <span className="flex items-center gap-2">
+                          <span
+                            className="inline-block h-2 w-2 rounded-full"
+                            style={{ backgroundColor: d.color }}
+                          />
+                          {d.name}
+                        </span>
+                        <span className="num text-muted-foreground">
+                          {((d.value / totalForPct) * 100).toFixed(1)}%
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </Panel>
+
+            <Panel className="lg:col-span-8 flex flex-col">
+              <PanelHeader title="Last 6 Months" />
+              <div className="flex-1 min-h-[268px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={sixMonths} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="2 4" vertical={false} />
+                    <XAxis
+                      dataKey="label"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11, fontFamily: "Geist Mono" }}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      width={48}
+                      tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11, fontFamily: "Geist Mono" }}
+                      tickFormatter={(v) => `$${Math.round(v)}`}
+                    />
+                    <Tooltip
+                      cursor={{ fill: "hsl(var(--accent))" }}
+                      contentStyle={{
+                        backgroundColor: '#1a1a1a',
+                        color: '#ffffff',
+                        border: '1px solid #333333'
+                      }}
+                      labelStyle={{ color: '#ffffff' }}
+                      itemStyle={{ color: '#ffffff' }}
+                      formatter={(v: number) => formatMoney(v)}
+                    />
+                    <Bar dataKey="spent" radius={[3, 3, 0, 0]}>
+                      {sixMonths.map((m, i) => (
+                        <Cell key={i} fill={m.current ? "hsl(var(--primary))" : "hsl(var(--border))"} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Panel>
+          </div>
+
+          <div className="mt-6">
+            <Panel>
+              <PanelHeader title="Top Categories" />
+              {topCats.length === 0 ? (
+                <Empty>—</Empty>
+              ) : (
+                <table className="w-full">
+                  <thead>
+                    <tr className="label-mono">
+                      <th className="text-left font-normal">#</th>
+                      <th className="text-left font-normal">Category</th>
+                      <th className="text-right font-normal">Spent</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topCats.map((c, i) => (
+                      <tr key={c.name} className="h-9 border-t border-border">
+                        <td className="num text-[12px] text-muted-foreground">{String(i + 1).padStart(2, "0")}</td>
+                        <td className="text-[13px]">
+                          <span className="inline-flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: c.color }} />
+                            {c.name}
+                          </span>
+                        </td>
+                        <td className="num text-right text-[13px]">{formatMoney(c.value)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </Panel>
+          </div>
+
+          <span className="hidden">{fixedTotal}{chargesTotal}</span>
+        </>
+      ) : view === "overview" ? (
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <QuickAccessCard
+              icon={Receipt}
+              label="Expenses"
+              onClick={() => navigate("/expenses")}
+            />
+            <QuickAccessCard
+              icon={CalendarDays}
+              label="Fixed Expenses"
+              onClick={() => navigate("/fixed")}
+            />
+            <QuickAccessCard
+              icon={CreditCard}
+              label="Cards"
+              onClick={() => navigate("/cards/add")}
+            />
+            <QuickAccessCard
+              icon={DollarSign}
+              label="Salary"
+              onClick={() => navigate("/salary")}
+            />
+            <QuickAccessCard
+              icon={PiggyBank}
+              label="Extra Income"
+              onClick={() => navigate("/extra-income")}
+            />
+            <QuickAccessCard
+              icon={Wallet}
+              label="Wallets"
+              onClick={() => navigate("/wallet")}
+            />
+          </div>
+          <div className="mt-6">
+            <OverviewCalendar month={month} />
+          </div>
+        </>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 text-[13px] text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={showPaidOnly}
+                  onChange={(e) => setShowPaidOnly(e.target.checked)}
+                  className="rounded border-border"
+                />
+                Show paid only (expenses)
+              </label>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleExport} className="gap-1.5">
+              <Download className="h-3.5 w-3.5" strokeWidth={1.8} />
+              Export to XLSX
+            </Button>
+          </div>
+
+          <div className="rounded-md border border-border bg-surface overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="label-mono border-b border-border">
+                  <th className="px-4 py-3 text-left font-normal text-[11px]">Date</th>
+                  <th className="px-4 py-3 text-left font-normal text-[11px]">Type</th>
+                  <th className="px-4 py-3 text-left font-normal text-[11px]">Description</th>
+                  <th className="px-4 py-3 text-left font-normal text-[11px]">Category / Wallet</th>
+                  <th className="px-4 py-3 text-right font-normal text-[11px]">Amount</th>
+                  <th className="px-4 py-3 text-center font-normal text-[11px]">Flow</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-[12px] text-muted-foreground">
+                      No transactions for this month.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredRows.map((row, i) => (
+                    <tr key={i} className={cn("border-t border-border h-10", !row.paid && "opacity-50")}>
+                      <td className="px-4 text-[12px] num">{row.date}</td>
+                      <td className="px-4 text-[12px]">{row.type}</td>
+                      <td className="px-4 text-[12px]">{row.description}</td>
+                      <td className="px-4 text-[12px] text-muted-foreground">
+                        {row.flow === "IN" ? (
+                          row.wallet
+                        ) : (
+                          typeof row.category === 'object' && row.category !== null ? (
+                            <span className="inline-flex items-center gap-2">
+                              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: row.category.color }} />
+                              {row.category.name} / {row.wallet}
+                            </span>
+                          ) : (
+                            row.wallet
+                          )
+                        )}
+                      </td>
+                      <td className={cn("px-4 text-right text-[12px] num", row.flow === "IN" ? "text-success" : "text-foreground")}>
+                        {formatMoney(row.amount)}
+                      </td>
+                      <td className="px-4 text-center text-[11px]">
+                        <span className={cn(
+                          "px-1.5 py-0.5 rounded text-[10px]",
+                          row.flow === "IN" ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive"
+                        )}>
+                          {row.flow}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              {filteredRows.length > 0 && (
+                <tfoot>
+                  <tr className="border-t-2 border-border bg-muted/30">
+                    <td colSpan={4} className="px-4 py-3 text-[13px] font-medium">Summary</td>
+                    <td className="px-4 py-3 text-right text-[13px] font-medium">
+                      <span className="text-success">{formatMoney(totalIn)} IN</span>
+                      {" | "}
+                      <span className="text-foreground">{formatMoney(totalOut)} OUT</span>
+                    </td>
+                    <td className="px-4 py-3 text-center text-[12px]">
+                      <span className={netBalance >= 0 ? "text-success" : "text-destructive"}>
+                        Net: {formatMoney(Math.abs(netBalance))} {netBalance >= 0 ? "" : "-"}
+                      </span>
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
+      )}
+    </AppLayout>
+  );
+}
+
+function computeActiveCharges(charges: Charge[], month: Date): Charge[] {
+  return charges.filter((c) => {
+    if (c.type === "one-time") {
+      const d = new Date(c.start_date);
+      return d.getFullYear() === month.getFullYear() && d.getMonth() === month.getMonth();
+    }
+    const start = new Date(c.start_date);
+    const monthsSinceStart =
+      (month.getFullYear() - start.getFullYear()) * 12 + (month.getMonth() - start.getMonth());
+    if (c.type === "recurring") {
+      return monthsSinceStart >= 0 && c.active !== false;
+    }
+    return monthsSinceStart >= 0 && monthsSinceStart < c.total_installments;
+  });
+}
+
+function SummaryCard({
+  label,
+  value,
+  tone = "default",
+  formula,
+}: {
+  label: string;
+  value: number;
+  tone?: "default" | "positive" | "negative";
+  formula?: string;
+}) {
+  const color =
+    tone === "positive"
+      ? "text-success"
+      : tone === "negative"
+        ? "text-destructive"
+        : "text-foreground";
+
+  return (
+    <div className="rounded-md border border-border bg-surface p-5">
+      <div className="label-mono">{label}</div>
+      <div className={`mt-2 text-[28px] leading-none tracking-[-0.04em] ${color}`}>
+        $<AnimatedNumber value={value} />
+      </div>
+      {formula && (
+        <div className="num mt-2 text-[10px] text-muted-foreground">{formula}</div>
+      )}
+    </div>
+  );
+}
+
+function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return (
+    <section className={`rounded-md border border-border bg-surface p-5 ${className}`}>
+      {children}
+    </section>
+  );
+}
+
+function PanelHeader({ title }: { title: string }) {
+  return <div className="label-mono mb-4">{title}</div>;
+}
+
+function Empty({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex h-32 items-center justify-center text-[12px] text-muted-foreground">
+      {children}
+    </div>
+  );
+}
+
+function QuickAccessCard({
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  icon: React.ElementType;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col items-center justify-center gap-2 rounded-md border border-border bg-surface p-4 transition-colors hover:bg-secondary hover:border-muted-foreground"
+    >
+      <Icon className="h-5 w-5 text-muted-foreground" strokeWidth={1.5} />
+      <span className="text-[11px] text-muted-foreground">{label}</span>
+    </button>
+  );
+}

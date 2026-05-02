@@ -1,0 +1,1 @@
+ALTER TABLE public.extra_income ADD COLUMN wallet_account_id uuid;
