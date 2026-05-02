@@ -1,7 +1,6 @@
 import { ReactNode } from "react";
 import { AppSidebar } from "./AppSidebar";
-import { ReminderBell } from "./ReminderBell";
-import { ReminderAutoPopup } from "./ReminderAutoPopup";
+import { FloatingActionButton } from "./FloatingActionButton";
 
 export function AppLayout({
   title,
@@ -38,8 +37,7 @@ export function AppLayout({
           </div>
         </div>
       </main>
-      <ReminderBell />
-      <ReminderAutoPopup />
+      <FloatingActionButton />
     </div>
   );
 }

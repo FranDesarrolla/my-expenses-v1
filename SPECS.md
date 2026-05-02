@@ -12,13 +12,25 @@ Personal finance tracker for a single user managing income (salary + extra), rec
 - **Language:** TypeScript (relaxed)
 - **Styling:** Tailwind CSS 3 + custom CSS variables
 - **Components:** shadcn/ui (~40 components)
-- **Backend:** Supabase (Postgres + Auth, anon key embedded, no RLS)
+- **Backend:** Supabase (Postgres + Auth, RLS enabled)
 - **Charts:** Recharts
-- **Forms:** react-hook-form + Zod (unused currently)
+- **Forms:** react-hook-form + Zod
 - **Notifications:** Sonner toasts
 - **Icons:** Lucide React
 - **Date utils:** date-fns
 - **Excel export:** xlsx
+- **Deployment:** Vercel + GitHub
+
+---
+
+## Authentication
+
+- **Supabase Auth** with email/password
+- **Login page:** `/login` - centered form, dark theme, error handling
+- **Session check:** On app load via `supabase.auth.getSession()`
+- **State listener:** `onAuthStateChange` for login/logout events
+- **Sign out:** Button in sidebar footer (Lucide LogOut icon)
+- **RLS:** Authenticated users only policy enabled
 
 ---
 
@@ -26,37 +38,34 @@ Personal finance tracker for a single user managing income (salary + extra), rec
 
 ```
 src/
-  App.tsx                 # Root: QueryClient, BrowserRouter, ThemeProvider, routes
-  main.tsx               # Entry point
+  App.tsx               # Root: QueryClient, BrowserRouter, ThemeProvider, routes, auth
+  main.tsx             # Entry point
   pages/
-    Dashboard.tsx        # Overview/Dashboard/Monthly Statement tabs, income vs spent, pie/bar charts
-    MyExpenses.tsx       # CRUD one-off expenses with month filter, dialog form
-    FixedExpenses.tsx   # Recurring bills with start/end dates, edit modal
-    AddCharge.tsx       # Card charges: one-time/installment/recurring, active toggle
-    MySalary.tsx        # Salary entry per month (modal dialog)
-    MyWallet.tsx        # Wallet balances + transfer modal
-    ExtraIncome.tsx     # Non-salary income entries (modal dialog)
-    MyCards.tsx         # Credit card CRUD
-    Tables.tsx          # Unified CRUD for categories/cards/wallets
-    Index.tsx           # Redirects to /expenses
-    NotFound.tsx        # 404
+    Login.tsx          # Auth login form
+    Dashboard.tsx      # Overview/Dashboard/Monthly Statement tabs
+    MyExpenses.tsx     # CRUD one-off expenses with month filter
+    FixedExpenses.tsx  # Recurring bills with start/end dates, edit modal
+    AddCharge.tsx      # Card charges: one-time/installment/recurring
+    MySalary.tsx      # Salary entry per month (modal dialog)
+    MyWallet.tsx       # Wallet balances + transfer modal
+    ExtraIncome.tsx    # Non-salary income entries (modal dialog)
+    Tables.tsx        # Unified CRUD for categories/cards/wallets
+    NotFound.tsx      # 404
   components/
-    AppLayout.tsx       # Sidebar + content shell wrapper
-    AppSidebar.tsx      # Nav: Home direct, collapsible groups (Income/Expenses/Accounts/Settings)
-    MonthSelector.tsx  # Prev/next month picker
-    MonthlyExpensesList.tsx  # Monthly view: expenses + fixed + card charges, toggle paid
-    OverviewCalendar.tsx   # Large calendar with income/expense/reminder dots, day detail dialog, add reminder
+    AppLayout.tsx     # Sidebar + content shell wrapper
+    AppSidebar.tsx    # Nav: Home direct, collapsible groups, sign out, theme toggle
+    FloatingActionButton.tsx  # FAB with 4 actions (Reminders, Calculator, Converter, Notes)
+    MonthSelector.tsx # Prev/next month picker
+    MonthlyExpensesList.tsx  # Monthly view: expenses + fixed + card charges
+    OverviewCalendar.tsx  # Large calendar with income/expense/reminder dots, day detail dialog
     AnimatedNumber.tsx  # Animated counter for dashboard totals
-    ReminderBell.tsx    # Floating bell, today's reminders popover, dismiss/dismiss-all
-    ReminderAutoPopup.tsx # Auto-popup on load for due reminders
-    ui/                 # shadcn/ui primitives (dialog, select, table, etc.)
   integrations/supabase/
-    client.ts          # createClient singleton
-    types.ts           # Database type (generated)
+    client.ts        # createClient singleton with auth config
+    types.ts         # Database type (generated)
   lib/
-    format.ts          # formatMoney, startOfMonthISO, endOfMonthISO, monthShort
-    utils.ts           # cn() utility
-    theme.tsx          # next-themes dark/light toggle
+    format.ts        # formatMoney, startOfMonthISO, endOfMonthISO, monthShort
+    utils.ts         # cn() utility
+    theme.tsx        # next-themes dark/light toggle
 ```
 
 ---
@@ -74,14 +83,12 @@ src/
 | `expense_payments` | id, expense_id, amount, wallet_account_id, date, paid (boolean), paid_at, created_at |
 | `fixed_expenses` | id, description, amount, category_id, wallet_account_id, start_date, end_date (nullable), created_at |
 | `fixed_expense_payments` | id, fixed_expense_id, month (yyyy-MM-01), paid (boolean), paid_at, amount, created_at |
-| `card_charges` | id, description, card_id, category_id, type (one-time/installment/recurring), monthly_amount, total_installments, current_installment, start_date, active |
+| `card_charges` | id, description, card_id, category_id, type (one-time/installment/recurring), monthly_amount, total_installments, start_date, active |
 | `charge_payments` | id, charge_id, month (yyyy-MM-01), paid (boolean), created_at |
 | `card_payments` | id, card_id, month (yyyy-MM-01), amount, wallet_account_id, date, notes, created_at |
 | `wallet_distributions` | wallet_account_id, month (yyyy-MM-01), amount |
 | `wallet_transfers` | id, from_wallet_id, to_wallet_id, amount, date, notes, created_at |
 | `reminders` | id, title, description, date, start_time, end_time, all_day, color, dismissed |
-
-**REMOVED:** fixed_expense_overrides table, expenses.paid column (not used)
 
 ---
 
@@ -110,23 +117,55 @@ src/
 
 ---
 
-## Components
+## Floating Action Button (FAB)
 
-- **AppLayout:** Sidebar wrapper with title/subtitle/actions slot
-- **AppSidebar:** Collapsible nav groups (Income/Expenses/Accounts/Settings), theme toggle
-- **MonthSelector:** Prev/next month buttons with label
-- **MonthlyExpensesList:** Tabbed view (Expenses/Fixed/Card Charges), toggle paid/unpaid, delete expense, no edit
-- **OverviewCalendar:** Large month grid, green income dots / red expense dots / colored reminder dots, day click for detail + add reminder dialog
-- **ReminderBell:** Fixed position bell, today's reminders popover, dismiss/dismiss-all
-- **ReminderAutoPopup:** Auto-popup on app load for any due (past/present) reminders, grouped by date
-- **AnimatedNumber:** Smooth counter animation for dashboard totals
+**Location:** Fixed bottom-right (24px from edges)
+
+**Actions (4):**
+1. **Reminders** (Bell icon): Popover with today's reminders, badge count, dismiss/dismiss-all
+2. **Calculator** (Calculator icon): 320px panel, basic arithmetic, keyboard support (0-9, +, -, *, /, Enter, Backspace, C, Escape)
+3. **Currency Converter** (DollarSign icon): 
+   - Fetches from `https://dolarapi.com/v1/dolares`
+   - Toggle ARS/USD input, pill tabs for Blue/Oficial/MEP/CCL
+   - MEP maps to "bolsa", CCL maps to "contadoconliqui"
+   - Live conversion as user types
+   - SVG flags (Argentina 🇦🇷, USA 🇺🇸)
+4. **Notes** (StickyNote icon): 
+   - localStorage ("quick-notes" key), auto-save on keystroke
+   - Green dot indicator when notes exist
+   - Character count + Clear button
+
+**Behavior:** Click outside FAB group closes menu. All panels stay open independently of FAB state.
+
+---
+
+## Reminders System
+
+- **Table:** reminders (id, title, description, date, start_time, end_time, all_day, color, dismissed)
+- **OverviewCalendar:** Shows colored dots per day (reminders + income + expenses). Click day opens dialog with reminders/incomes/expenses
+- **ReminderBell:** FAB button with badge (count > 0), popover with today's reminders, dismiss/dismiss-all
+- **ReminderAutoPopup:** Auto-opens on app load if any pending reminders (past or present, not dismissed)
+
+---
+
+## Deployment
+
+- **Repository:** GitHub
+- **Hosting:** Vercel
+- **Database:** Own Supabase project (not Lovable)
+- **Environment Variables:**
+  - `VITE_SUPABASE_URL`
+  - `VITE_SUPABASE_PUBLISHABLE_KEY`
 
 ---
 
 ## Current Status
 
-- All core pages functional. Auth not enforced.
-- Reminder system: add from calendar day dialog, view via bell icon, auto-popup on load
-- Monthly Statement with XLSX export
-- Card charges: three types (one-time/installment/recurring), active toggle
-- Fixed expenses: amount override via fixed_expense_payments.amount
+- All core pages functional with Supabase Auth
+- FAB with 4 independent actions working
+- Currency converter using dolarapi.com
+- Quick notes with localStorage persistence
+- Calendar with income/expense/reminder dots
+- Theme toggle (dark/light)
+- Sign out in sidebar
+- RLS enabled (authenticated users only)
