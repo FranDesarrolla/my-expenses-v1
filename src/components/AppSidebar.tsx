@@ -14,9 +14,12 @@ import {
   Home,
   Settings,
   Sparkles,
+  LogOut,
   type LucideIcon,
 } from "lucide-react";
 import { useTheme } from "@/lib/theme";
+import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
 type LeafItem = { to: string; label: string; icon: LucideIcon; end?: boolean };
@@ -134,6 +137,13 @@ function NavGroup({ group }: { group: GroupItem }) {
 
 export function AppSidebar() {
   const { theme, toggle } = useTheme();
+  const navigate = useNavigate();
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    navigate("/login");
+  }
+
   return (
     <aside className="flex h-screen max-h-screen w-[240px] flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar">
       <div className="flex flex-col gap-1 px-5 pb-6 pt-7">
@@ -158,7 +168,15 @@ export function AppSidebar() {
         </ul>
       </nav>
 
-      <div className="border-t border-sidebar-border p-3">
+      <div className="border-t border-sidebar-border p-3 space-y-1">
+        <button
+          onClick={handleSignOut}
+          className="flex w-full items-center justify-between rounded-md px-3 py-2 text-[12px] text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+          aria-label="Sign out"
+        >
+          <span className="font-mono uppercase tracking-[0.06em]">Sign out</span>
+          <LogOut className="h-4 w-4" strokeWidth={1.5} />
+        </button>
         <button
           onClick={toggle}
           className="flex w-full items-center justify-between rounded-md px-3 py-2 text-[12px] text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
