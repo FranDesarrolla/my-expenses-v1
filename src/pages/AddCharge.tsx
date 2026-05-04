@@ -23,8 +23,8 @@ interface Wallet { id: string; name: string; color: string }
 interface Charge {
   id: string; description: string; card_id: string; category_id: string | null;
   type: ChargeType; monthly_amount: number;
-  total_installments: number; current_installment: number; start_date: string; charge_date: string;
-  active: boolean;
+  total_installments: number; current_installment: number; start_date: string;
+  end_date: string | null; active: boolean;
 }
 
 interface CardPayment {
@@ -115,7 +115,7 @@ export default function AddCharge() {
       total_installments: installments,
       current_installment: 1,
       start_date: format(cDate, "yyyy-MM-dd"),
-      charge_date: format(cDate, "yyyy-MM-dd"),
+      end_date: null,
       active: true,
     };
     const { error } = await supabase.from("card_charges").insert(payload);
@@ -133,9 +133,11 @@ export default function AddCharge() {
   }
 
   async function toggleActive(id: string, active: boolean) {
-    const { error } = await supabase.from("card_charges").update({ active }).eq("id", id);
+    const today = format(new Date(), "yyyy-MM-dd");
+    const end_date = active ? null : today;
+    const { error } = await supabase.from("card_charges").update({ active, end_date }).eq("id", id);
     if (error) return toast.error(error.message);
-    setCharges((prev) => prev.map((c) => (c.id === id ? { ...c, active } : c)));
+    setCharges((prev) => prev.map((c) => (c.id === id ? { ...c, active, end_date } : c)));
   }
 
   async function saveEdit() {
@@ -154,7 +156,7 @@ export default function AddCharge() {
         monthly_amount: amt,
         total_installments: installments,
         start_date: editing.start_date,
-        charge_date: editing.start_date,
+        end_date: editing.end_date,
         active: editing.active,
       })
       .eq("id", editing.id);
@@ -252,20 +254,27 @@ export default function AddCharge() {
   }
 
   // Filter charges active in selected month + compute installment progress
-  const monthCharges = useMemo(() => {
-    return charges
-      .map((c) => {
-        const start = new Date(c.start_date);
-        const monthsSinceStart =
-          (month.getFullYear() - start.getFullYear()) * 12 + (month.getMonth() - start.getMonth());
-        let inMonth = false;
-        if (c.type === "one-time") {
-          inMonth = start.getFullYear() === month.getFullYear() && start.getMonth() === month.getMonth();
-        } else if (c.type === "installment") {
-          inMonth = monthsSinceStart >= 0 && monthsSinceStart < c.total_installments;
+const monthCharges = useMemo(() => {
+    return charges.map((c) => {
+      const start = new Date(c.start_date);
+      const monthStart = new Date(month);
+      const monthsSinceStart = (monthStart.getFullYear() - start.getFullYear()) * 12 + (monthStart.getMonth() - start.getMonth());
+      let inMonth = false;
+      if (c.type === "one-time") {
+        inMonth = start.getFullYear() === month.getFullYear() && start.getMonth() === month.getMonth();
+      } else if (c.type === "installment") {
+        inMonth = monthsSinceStart >= 0 && monthsSinceStart < c.total_installments;
+      } else {
+        if (monthsSinceStart < 0) {
+          inMonth = false;
+        } else if (!c.end_date) {
+          inMonth = true;
         } else {
-          inMonth = monthsSinceStart >= 0;
+          const end = new Date(c.end_date);
+          const monthsUntilEnd = (end.getFullYear() - monthStart.getFullYear()) * 12 + (end.getMonth() - monthStart.getMonth());
+          inMonth = monthsUntilEnd >= 0;
         }
+      }
         const currentInst =
           c.type === "installment" ? Math.min(c.total_installments, monthsSinceStart + 1) : 1;
         return { ...c, _inMonth: inMonth, currentInst };
@@ -476,7 +485,6 @@ export default function AddCharge() {
                   <th className="px-5 py-3 text-left font-normal">Description</th>
                   <th className="px-5 py-3 text-left font-normal">Card</th>
                   <th className="px-5 py-3 text-left font-normal">Type</th>
-                  <th className="px-5 py-3 text-left font-normal">Progress</th>
                   <th className="px-5 py-3 text-left font-normal">Active</th>
                   <th className="px-5 py-3 text-right font-normal">Amount</th>
                   <th className="w-[100px] px-5 py-3 text-right font-normal">Actions</th>
@@ -505,9 +513,6 @@ export default function AddCharge() {
                         >
                           {typeLabel(c.type)}
                         </span>
-                      </td>
-                      <td className="num px-5 text-[12px] text-muted-foreground">
-                        {c.type === "installment" ? `${c.currentInst}/${c.total_installments}` : "—"}
                       </td>
                       <td className="px-5">
                         {c.type === "recurring" ? (
@@ -783,6 +788,9 @@ export default function AddCharge() {
                 <div className="md:col-span-12 flex items-center gap-3">
                   <Switch checked={editing.active} onCheckedChange={(v) => setEditing({ ...editing, active: !!v })} />
                   <span className="text-[12px] text-muted-foreground">{editing.active ? "Active" : "Inactive"}</span>
+                  {editing.end_date && (
+                    <span className="text-[10px] text-muted-foreground">Ended: {editing.end_date}</span>
+                  )}
                 </div>
               )}
             </div>

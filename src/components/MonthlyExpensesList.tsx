@@ -39,7 +39,7 @@ interface FixedPayment { id?: string; fixed_expense_id: string; month: string; p
 interface Charge {
   id: string; description: string; card_id: string; category_id: string | null;
   type: string; monthly_amount: number; total_installments: number;
-  current_installment: number; start_date: string; active: boolean;
+  current_installment: number; start_date: string; end_date: string | null; active: boolean;
 }
 interface ChargePayment { id?: string; charge_id: string; month: string; paid: boolean }
 
@@ -136,7 +136,15 @@ export function MonthlyExpensesList({ month, interactive = false, refreshKey = 0
         } else if (c.type === "installment") {
           inMonth = monthsSinceStart >= 0 && monthsSinceStart < c.total_installments;
         } else {
-          inMonth = monthsSinceStart >= 0 && c.active;
+          if (monthsSinceStart < 0) {
+            inMonth = false;
+          } else if (!c.end_date) {
+            inMonth = true;
+          } else {
+            const end = new Date(c.end_date);
+            const monthsUntilEnd = (end.getFullYear() - month.getFullYear()) * 12 + (end.getMonth() - month.getMonth());
+            inMonth = monthsUntilEnd >= 0;
+          }
         }
         const currentInst =
           c.type === "installment" ? Math.min(c.total_installments, monthsSinceStart + 1) : 1;

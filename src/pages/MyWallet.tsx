@@ -151,7 +151,7 @@ export default function MyWallet() {
 
   return (
     <AppLayout
-      title="My Wallet"
+      title="Wallets"
       subtitle="Track balances and transfers between accounts."
       actions={
         <Dialog open={transferOpen} onOpenChange={setTransferOpen}>

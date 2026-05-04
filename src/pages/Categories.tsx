@@ -45,7 +45,7 @@ export default function Categories() {
   }
 
   return (
-    <AppLayout title="Tables" subtitle="Manage categories used across the ledger.">
+    <AppLayout title="Manage" subtitle="Manage categories used across the ledger.">
       <section className="mb-6 rounded-md border border-border bg-surface p-5">
         <div className="label-mono mb-4">New Category</div>
         <form onSubmit={add} className="flex flex-wrap items-end gap-3">

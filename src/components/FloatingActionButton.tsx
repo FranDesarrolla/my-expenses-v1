@@ -787,10 +787,10 @@ export function FloatingActionButton() {
   }, [open]);
 
   const actions: FABAction[] = [
-    { id: "reminders", label: "Reminders", trigger: <ReminderPopover /> },
-    { id: "calculator", label: "Calculator", trigger: <CalculatorPopover /> },
-    { id: "converter", label: "Converter", trigger: <ConverterPopover /> },
     { id: "notes", label: "Notes", trigger: <NotesPopover /> },
+    { id: "converter", label: "Converter", trigger: <ConverterPopover /> },
+    { id: "calculator", label: "Calculator", trigger: <CalculatorPopover /> },
+    { id: "reminders", label: "Reminders", trigger: <ReminderPopover /> },
   ];
 
   return (

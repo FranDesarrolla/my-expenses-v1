@@ -86,6 +86,7 @@ interface Charge {
   current_installment: number;
   total_installments: number;
   start_date: string;
+  end_date: string | null;
   active?: boolean;
 }
 
@@ -298,8 +299,12 @@ export default function Dashboard() {
         if (c.type === "one-time") {
           return start.getFullYear() === m.getFullYear() && start.getMonth() === m.getMonth();
         }
+        if (monthsSinceStart < 0) return false;
         if (c.type === "recurring") {
-          return monthsSinceStart >= 0 && c.active !== false;
+          if (!c.end_date) return true;
+          const end = new Date(c.end_date);
+          const monthsUntilEnd = (end.getFullYear() - m.getFullYear()) * 12 + (end.getMonth() - m.getMonth());
+          return monthsUntilEnd >= 0;
         }
         return monthsSinceStart >= 0 && monthsSinceStart < c.total_installments;
       });
@@ -516,7 +521,7 @@ export default function Dashboard() {
 
   return (
     <AppLayout
-      title="Dashboard"
+      title="Home"
       subtitle="Command your cashflow."
       actions={<MonthSelector value={month} onChange={setMonth} />}
     >
@@ -906,8 +911,13 @@ function computeActiveCharges(charges: Charge[], month: Date): Charge[] {
     const start = new Date(c.start_date);
     const monthsSinceStart =
       (month.getFullYear() - start.getFullYear()) * 12 + (month.getMonth() - start.getMonth());
+    if (monthsSinceStart < 0) return false;
     if (c.type === "recurring") {
-      return monthsSinceStart >= 0 && c.active !== false;
+      if (!c.end_date) return true;
+      const end = new Date(c.end_date);
+      const monthsUntilEnd =
+        (end.getFullYear() - month.getFullYear()) * 12 + (end.getMonth() - month.getMonth());
+      return monthsUntilEnd >= 0;
     }
     return monthsSinceStart >= 0 && monthsSinceStart < c.total_installments;
   });

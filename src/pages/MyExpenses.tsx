@@ -71,7 +71,7 @@ export default function MyExpenses() {
 
   return (
     <AppLayout
-      title="My Expenses"
+      title="Expenses"
       subtitle="All records for the month — toggle paid status as you settle them."
       actions={
         <div className="flex items-center gap-2">

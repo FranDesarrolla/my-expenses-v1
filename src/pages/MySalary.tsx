@@ -64,7 +64,7 @@ export default function MySalary() {
 
   return (
     <AppLayout
-      title="My Salary"
+      title="Salary"
       subtitle="One entry per month."
       actions={
         <Dialog open={open} onOpenChange={setOpen}>

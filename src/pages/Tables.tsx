@@ -20,7 +20,7 @@ const TABS: { id: Tab; label: string; table: "categories" | "cards" | "wallet_ac
 export default function Tables() {
   const [tab, setTab] = useState<Tab>("categories");
   return (
-    <AppLayout title="Tables" subtitle="Manage categories, cards and wallet accounts.">
+    <AppLayout title="Manage" subtitle="Manage categories, cards and wallet accounts.">
       <div className="mb-6 inline-flex items-center gap-1 rounded-full border border-border bg-surface p-1">
         {TABS.map((t) => (
           <button
