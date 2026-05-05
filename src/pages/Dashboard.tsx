@@ -15,7 +15,6 @@ import {
   CalendarDays,
   DollarSign,
   PiggyBank,
-  Download,
 } from "lucide-react";
 import {
   startOfMonth,
@@ -26,7 +25,6 @@ import {
   formatMoney,
 } from "@/lib/format";
 import { startOfMonth as dateFnsStartOfMonth, endOfMonth, format as formatDate } from "date-fns";
-import * as XLSX from "xlsx";
 import {
   ResponsiveContainer,
   PieChart,
@@ -158,8 +156,7 @@ interface CardPayment {
 
 export default function Dashboard() {
   const [month, setMonth] = useState(startOfMonth(new Date()));
-  const [view, setView] = useState<"dashboard" | "list" | "overview">("overview");
-  const [showPaidOnly, setShowPaidOnly] = useState(false);
+  const [view, setView] = useState<"dashboard" | "overview">("overview");
   const navigate = useNavigate();
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -189,7 +186,8 @@ export default function Dashboard() {
   }, [month]);
 
   async function loadAll() {
-    const start = startOfMonthISO(month);
+    const monthISO = formatDate(month, 'yyyy-MM-01');
+    const start = monthISO;
     const end = endOfMonthISO(month);
 
     const [
@@ -213,7 +211,7 @@ export default function Dashboard() {
     ] = await Promise.all([
       supabase.from("categories").select("*").order("name"),
       supabase.from("expenses").select("id, amount, description, date, category_id, wallet_account_id").gte("date", start).lte("date", end),
-      supabase.from("salary").select("wallet_account_id, amount, month"),
+      supabase.from("salary").select("wallet_account_id, amount, month").eq("month", start),
       supabase.from("cards").select("*"),
       supabase.from("card_charges").select("*"),
       supabase.from("charge_payments").select("paid, charge_id").eq("month", start),
@@ -233,6 +231,7 @@ export default function Dashboard() {
     setCategories(cats.data ?? []);
     setExpenses((exps.data ?? []) as Expense[]);
     setSalaryAmt(((sal.data ?? []) as { amount: number }[]).reduce((s, r) => s + Number(r.amount), 0));
+    const salaries = (sal.data ?? []) as SalaryRow[];
     setCards(cds.data ?? []);
     setCharges((chs.data ?? []) as Charge[]);
     setChargePays((pays.data ?? []) as ChargePayment[]);
@@ -256,22 +255,28 @@ export default function Dashboard() {
     const sixStartStr = startOfMonthISO(sixMonthsStart);
     const sixEndStr = endOfMonthISO(month);
 
-    const [sixExpData, sixExpPaysData, sixFixedPaysData, sixChargePaysData, sixSalData] = await Promise.all([
+    const [sixExpData, sixExpPaysData, sixFixedPaysData, sixChargePaysData] = await Promise.all([
       supabase.from("expenses").select("id, amount, date").gte("date", sixStartStr).lte("date", sixEndStr),
       (supabase.from("expense_payments" as any).select("expense_id, paid, paid_at").gte("paid_at", sixStartStr).lte("paid_at", sixEndStr) as any),
       (supabase.from("fixed_expense_payments" as any).select("fixed_expense_id, month, paid, amount").gte("month", sixStartStr).lte("month", sixEndStr) as any),
       supabase.from("charge_payments").select("charge_id, month, paid").gte("month", sixStartStr).lte("month", sixEndStr),
-      supabase.from("salary").select("month, amount").gte("month", sixStartStr).lte("month", sixEndStr),
     ]);
 
     const allExpenses = sixExpData.data ?? [];
     const allExpPays = (sixExpPaysData.data ?? []) as { expense_id: string; paid: boolean }[];
     const allFixedPays = (sixFixedPaysData.data ?? []) as { fixed_expense_id: string; month: string; paid: boolean; amount?: number }[];
     const allChargePays = (sixChargePaysData.data ?? []) as { charge_id: string; month: string; paid: boolean }[];
-    const allSalary = sixSalData.data ?? [];
 
     const fixedList = (fxs.data ?? []) as FixedExpense[];
     const allCharges = (chs.data ?? []) as Charge[];
+
+    setAllSalaries((allSal?.data ?? []) as SalaryRow[]);
+    setAllExtraIncomes((allExtra?.data ?? []) as ExtraIncomeRow[]);
+    setAllExpensePayments((expPaysAll?.data ?? []) as ExpensePayment[]);
+    setAllFixedPayments((fixedPaysAll?.data ?? []) as FixedPayment[]);
+    setAllCardPaymentsAll((allCardPays?.data ?? []) as any[]);
+    setAllTransfersAll((allTransfers?.data ?? []) as Transfer[]);
+    setAllDistributionsAll((allDistributions?.data ?? []) as Distribution[]);
 
     const months: { label: string; spent: number; current: boolean }[] = [];
     for (let i = 5; i >= 0; i--) {
@@ -364,6 +369,10 @@ export default function Dashboard() {
   const topCats = byCategory.slice(0, 5);
   const totalForPct = byCategory.reduce((s, x) => s + x.value, 0) || 1;
 
+  const monthISO = formatDate(month, 'yyyy-MM-01');
+  const monthStart = formatDate(startOfMonth(month), 'yyyy-MM-dd');
+  const monthEnd = formatDate(endOfMonth(month), 'yyyy-MM-dd');
+
   const walletBalances = useMemo(() => {
     return wallets.map((w) => {
       const fromSalary = salaries
@@ -399,125 +408,12 @@ export default function Dashboard() {
       const spentCardPayments = cardPayments
         .filter((cp) => cp.wallet_account_id === w.id)
         .reduce((s, cp) => s + Number(cp.amount), 0);
-      return { wallet: w, balance: credited - spentOneOff - spentFixed - spentCardPayments };
+      const spent = spentOneOff + spentFixed + spentCardPayments;
+      return { wallet: w, balance: credited - spent };
     });
   }, [wallets, salaries, extraIncomes, allDistributions, transfers, walletExpenses, fixedExpenses, fixedPayments, cardPayments, expensePayments]);
 
   const walletTotal = walletBalances.reduce((s, w) => s + w.balance, 0);
-
-  const monthISO = startOfMonthISO(month);
-  const monthStart = startOfMonthISO(month);
-  const monthEnd = endOfMonthISO(month);
-
-  const statementRows = useMemo(() => {
-    const rows: { date: string; type: string; description: string; category: string; wallet: string; amount: number; flow: string; paid: boolean }[] = [];
-
-    salaries.forEach(s => {
-      const w = wallets.find(w => w.id === s.wallet_account_id);
-      rows.push({
-        date: monthStart,
-        type: "Salary",
-        description: "Salary",
-        category: "-",
-        wallet: w?.name ?? "-",
-        amount: Number(s.amount),
-        flow: "IN",
-        paid: true,
-      });
-    });
-
-    extraIncomes.forEach(ei => {
-      const w = wallets.find(w => w.id === ei.wallet_account_id);
-      rows.push({
-        date: ei.date,
-        type: "Extra Income",
-        description: ei.concept ?? "Extra Income",
-        category: "-",
-        wallet: w?.name ?? "-",
-        amount: Number(ei.amount),
-        flow: "IN",
-        paid: true,
-      });
-    });
-
-    expenses.forEach(e => {
-      const cat = categories.find(c => c.id === e.category_id);
-      const w = wallets.find(w => w.id === e.wallet_account_id);
-      const isPaid = expensePayments.find(p => p.expense_id === e.id && p.paid)?.paid ?? false;
-      rows.push({
-        date: e.date,
-        type: "Expense",
-        description: e.description ?? "Expense",
-        category: cat ? { name: cat.name, color: cat.color } : null,
-        wallet: w?.name ?? "-",
-        amount: Number(e.amount),
-        flow: "OUT",
-        paid: isPaid,
-      });
-    });
-
-    const monthFixedPays = fixedPayments.filter(p => p.month === monthISO && p.paid);
-    fixedExpenses.forEach(f => {
-      if (f.start_date > monthEnd || (f.end_date && f.end_date < monthStart)) return;
-      const cat = categories.find(c => c.id === f.category_id);
-      const w = wallets.find(w => w.id === f.wallet_account_id);
-      const payment = monthFixedPays.find(p => p.fixed_expense_id === f.id);
-      const amount = payment?.amount ?? Number(f.amount);
-      const date = payment?.paid_at ?? f.start_date;
-      rows.push({
-        date: date,
-        type: "Fixed",
-        description: f.description ?? "Fixed Expense",
-        category: cat ? { name: cat.name, color: cat.color } : null,
-        wallet: w?.name ?? "-",
-        amount: amount,
-        flow: "OUT",
-        paid: !!payment,
-      });
-    });
-
-    cardPayments.forEach(cp => {
-      const card = cards.find(c => c.id === cp.card_id);
-      const w = wallets.find(w => w.id === cp.wallet_account_id);
-      rows.push({
-        date: cp.date,
-        type: "Card",
-        description: card?.name ?? "Card Payment",
-        category: null,
-        wallet: w?.name ?? "-",
-        amount: Number(cp.amount),
-        flow: "OUT",
-        paid: true,
-      });
-    });
-
-    rows.sort((a, b) => (a.date ?? '1970-01-01').localeCompare(b.date ?? '1970-01-01'));
-
-    return rows;
-  }, [salaries, extraIncomes, expenses, fixedExpenses, fixedPayments, cardPayments, wallets, categories, monthISO, monthStart, monthEnd]);
-
-  const filteredRows = showPaidOnly 
-    ? statementRows.filter(r => r.flow === "IN" || r.paid)
-    : statementRows;
-
-  const totalIn = filteredRows.filter(r => r.flow === "IN").reduce((s, r) => s + r.amount, 0);
-  const totalOut = filteredRows.filter(r => r.flow === "OUT" && r.paid).reduce((s, r) => s + r.amount, 0);
-  const netBalance = totalIn - totalOut;
-
-  const handleExport = () => {
-    const data = filteredRows.map(r => ({
-      Date: r.date,
-      Type: r.type,
-      Description: r.description,
-      "Category/Wallet": r.flow === "IN" ? r.wallet : r.category,
-      Amount: r.amount,
-      Flow: r.flow,
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, `Statement - ${formatDate(month, "MMMM yyyy")}`);
-    XLSX.writeFile(wb, `statement-${formatDate(month, "yyyy-MM")}.xlsx`);
-  };
 
   return (
     <AppLayout
@@ -549,18 +445,6 @@ export default function Dashboard() {
           )}
         >
           Dashboard
-        </button>
-        <button
-          type="button"
-          onClick={() => setView("list")}
-          className={cn(
-            "rounded-full px-4 py-1.5 text-[12.5px] transition-colors",
-            view === "list"
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          Monthly Statement
         </button>
       </div>
 
@@ -803,101 +687,9 @@ export default function Dashboard() {
             <OverviewCalendar month={month} />
           </div>
         </>
-      ) : (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 text-[13px] text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={showPaidOnly}
-                  onChange={(e) => setShowPaidOnly(e.target.checked)}
-                  className="rounded border-border"
-                />
-                Show paid only (expenses)
-              </label>
-            </div>
-            <Button variant="outline" size="sm" onClick={handleExport} className="gap-1.5">
-              <Download className="h-3.5 w-3.5" strokeWidth={1.8} />
-              Export to XLSX
-            </Button>
-          </div>
-
-          <div className="rounded-md border border-border bg-surface overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="label-mono border-b border-border">
-                  <th className="px-4 py-3 text-left font-normal text-[11px]">Date</th>
-                  <th className="px-4 py-3 text-left font-normal text-[11px]">Type</th>
-                  <th className="px-4 py-3 text-left font-normal text-[11px]">Description</th>
-                  <th className="px-4 py-3 text-left font-normal text-[11px]">Category / Wallet</th>
-                  <th className="px-4 py-3 text-right font-normal text-[11px]">Amount</th>
-                  <th className="px-4 py-3 text-center font-normal text-[11px]">Flow</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-[12px] text-muted-foreground">
-                      No transactions for this month.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredRows.map((row, i) => (
-                    <tr key={i} className={cn("border-t border-border h-10", !row.paid && "opacity-50")}>
-                      <td className="px-4 text-[12px] num">{row.date}</td>
-                      <td className="px-4 text-[12px]">{row.type}</td>
-                      <td className="px-4 text-[12px]">{row.description}</td>
-                      <td className="px-4 text-[12px] text-muted-foreground">
-                        {row.flow === "IN" ? (
-                          row.wallet
-                        ) : (
-                          typeof row.category === 'object' && row.category !== null ? (
-                            <span className="inline-flex items-center gap-2">
-                              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: row.category.color }} />
-                              {row.category.name} / {row.wallet}
-                            </span>
-                          ) : (
-                            row.wallet
-                          )
-                        )}
-                      </td>
-                      <td className={cn("px-4 text-right text-[12px] num", row.flow === "IN" ? "text-success" : "text-foreground")}>
-                        {formatMoney(row.amount)}
-                      </td>
-                      <td className="px-4 text-center text-[11px]">
-                        <span className={cn(
-                          "px-1.5 py-0.5 rounded text-[10px]",
-                          row.flow === "IN" ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive"
-                        )}>
-                          {row.flow}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-              {filteredRows.length > 0 && (
-                <tfoot>
-                  <tr className="border-t-2 border-border bg-muted/30">
-                    <td colSpan={4} className="px-4 py-3 text-[13px] font-medium">Summary</td>
-                    <td className="px-4 py-3 text-right text-[13px] font-medium">
-                      <span className="text-success">{formatMoney(totalIn)} IN</span>
-                      {" | "}
-                      <span className="text-foreground">{formatMoney(totalOut)} OUT</span>
-                    </td>
-                    <td className="px-4 py-3 text-center text-[12px]">
-                      <span className={netBalance >= 0 ? "text-success" : "text-destructive"}>
-                        Net: {formatMoney(Math.abs(netBalance))} {netBalance >= 0 ? "" : "-"}
-                      </span>
-                    </td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
-        </div>
-      )}
+      ) : view === "overview" ? (
+        <></>
+      ) : null}
     </AppLayout>
   );
 }
