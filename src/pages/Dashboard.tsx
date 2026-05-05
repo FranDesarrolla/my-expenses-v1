@@ -3,8 +3,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/AppLayout";
 import { MonthSelector } from "@/components/MonthSelector";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
-import { Button } from "@/components/ui/button";
-import { MonthlyExpensesList } from "@/components/MonthlyExpensesList";
 import { OverviewCalendar } from "@/components/OverviewCalendar";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -24,7 +22,7 @@ import {
   monthShort,
   formatMoney,
 } from "@/lib/format";
-import { startOfMonth as dateFnsStartOfMonth, endOfMonth, format as formatDate } from "date-fns";
+import { endOfMonth, format as formatDate } from "date-fns";
 import {
   ResponsiveContainer,
   PieChart,
@@ -94,64 +92,9 @@ interface Card {
   color: string;
 }
 
-interface Wallet {
-  id: string;
-  name: string;
-  color: string;
-}
-
-interface SalaryRow {
-  wallet_account_id: string | null;
-  amount: number;
-  month: string;
-}
-
-interface ExtraIncomeRow {
-  wallet_account_id: string | null;
-  amount: number;
-  date: string;
-  concept: string | null;
-}
-
-interface Distribution {
-  wallet_account_id: string | null;
-  amount: number;
-}
-
-interface ExpenseRow {
-  wallet_account_id: string | null;
-  amount: number;
-}
-
 interface ExpensePayment {
   expense_id: string;
   paid: boolean;
-}
-
-interface FixedRow {
-  id: string;
-  wallet_account_id: string | null;
-  amount: number;
-  start_date: string;
-  end_date: string | null;
-  description: string;
-  category_id: string | null;
-}
-
-interface Transfer {
-  id: string;
-  from_wallet_id: string | null;
-  to_wallet_id: string | null;
-  amount: number;
-  date: string;
-  notes: string | null;
-}
-
-interface CardPayment {
-  id: string;
-  wallet_account_id: string | null;
-  amount: number;
-  month: string;
 }
 
 export default function Dashboard() {
@@ -170,16 +113,7 @@ export default function Dashboard() {
   const [charges, setCharges] = useState<Charge[]>([]);
   const [chargePays, setChargePays] = useState<ChargePayment[]>([]);
 
-  const [wallets, setWallets] = useState<Wallet[]>([]);
-  const [salaries, setSalaries] = useState<SalaryRow[]>([]);
-  const [extraIncomes, setExtraIncomes] = useState<ExtraIncomeRow[]>([]);
-  const [allDistributions, setAllDistributions] = useState<Distribution[]>([]);
-  const [walletExpenses, setWalletExpenses] = useState<ExpenseRow[]>([]);
   const [expensePayments, setExpensePayments] = useState<ExpensePayment[]>([]);
-  const [fixedExpenses, setFixedExpenses] = useState<FixedRow[]>([]);
-  const [fixedPayments, setFixedPayments] = useState<FixedPayment[]>([]);
-  const [transfers, setTransfers] = useState<Transfer[]>([]);
-  const [cardPayments, setCardPayments] = useState<CardPayment[]>([]);
 
   useEffect(() => {
     void loadAll();
@@ -200,13 +134,6 @@ export default function Dashboard() {
       fxs,
       fxPays,
       extra,
-      ws,
-      allDist,
-      allExp,
-      allFx,
-      allFxPays,
-      tr,
-      cp,
       expPays,
     ] = await Promise.all([
       supabase.from("categories").select("*").order("name"),
@@ -218,20 +145,12 @@ export default function Dashboard() {
       supabase.from("fixed_expenses").select("*").lte("start_date", end).or("end_date.is.null,end_date.gte." + start),
       supabase.from("fixed_expense_payments").select("fixed_expense_id, month, paid, paid_at").eq("month", start),
       supabase.from("extra_income" as never).select("wallet_account_id, amount, date, concept").gte("date", start).lte("date", end),
-      supabase.from("wallet_accounts").select("*").order("name"),
-      supabase.from("wallet_distributions").select("wallet_account_id, amount"),
-      supabase.from("expenses").select("id, wallet_account_id, amount"),
-      supabase.from("fixed_expenses").select("id, wallet_account_id, amount, description, category_id, start_date, end_date").lte("start_date", end).or("end_date.is.null,end_date.gte." + start),
-      supabase.from("fixed_expense_payments").select("fixed_expense_id, month, paid, paid_at"),
-      supabase.from("wallet_transfers").select("from_wallet_id, to_wallet_id, amount"),
-      (supabase.from("card_payments" as any).select("wallet_account_id, amount, month") as any),
       (supabase.from("expense_payments" as any).select("expense_id, paid") as any),
     ]);
 
     setCategories(cats.data ?? []);
     setExpenses((exps.data ?? []) as Expense[]);
     setSalaryAmt(((sal.data ?? []) as { amount: number }[]).reduce((s, r) => s + Number(r.amount), 0));
-    const salaries = (sal.data ?? []) as SalaryRow[];
     setCards(cds.data ?? []);
     setCharges((chs.data ?? []) as Charge[]);
     setChargePays((pays.data ?? []) as ChargePayment[]);
@@ -239,16 +158,7 @@ export default function Dashboard() {
     setFixedPays((fxPays.data ?? []) as FixedPayment[]);
     setExtraIncomeAmt(((extra.data ?? []) as { amount: number }[]).reduce((s, r) => s + Number(r.amount), 0));
 
-    setWallets((ws.data ?? []) as Wallet[]);
-    setSalaries((sal.data ?? []) as SalaryRow[]);
-    setExtraIncomes((extra.data ?? []) as ExtraIncomeRow[]);
-    setAllDistributions((allDist.data ?? []) as Distribution[]);
-    setWalletExpenses((allExp.data ?? []) as ExpenseRow[]);
     setExpensePayments((expPays.data ?? []) as ExpensePayment[]);
-    setFixedExpenses((allFx.data ?? []) as FixedRow[]);
-    setFixedPayments((allFxPays.data ?? []) as FixedPayment[]);
-    setTransfers((tr.data ?? []) as Transfer[]);
-    setCardPayments((cp.data ?? []) as CardPayment[]);
 
     const sixMonthsStart = addMonths(startOfMonth(month), -5);
     const sixMonthsEnd = endOfMonth(month);
@@ -269,14 +179,6 @@ export default function Dashboard() {
 
     const fixedList = (fxs.data ?? []) as FixedExpense[];
     const allCharges = (chs.data ?? []) as Charge[];
-
-    setAllSalaries((allSal?.data ?? []) as SalaryRow[]);
-    setAllExtraIncomes((allExtra?.data ?? []) as ExtraIncomeRow[]);
-    setAllExpensePayments((expPaysAll?.data ?? []) as ExpensePayment[]);
-    setAllFixedPayments((fixedPaysAll?.data ?? []) as FixedPayment[]);
-    setAllCardPaymentsAll((allCardPays?.data ?? []) as any[]);
-    setAllTransfersAll((allTransfers?.data ?? []) as Transfer[]);
-    setAllDistributionsAll((allDistributions?.data ?? []) as Distribution[]);
 
     const months: { label: string; spent: number; current: boolean }[] = [];
     for (let i = 5; i >= 0; i--) {
@@ -373,48 +275,6 @@ export default function Dashboard() {
   const monthStart = formatDate(startOfMonth(month), 'yyyy-MM-dd');
   const monthEnd = formatDate(endOfMonth(month), 'yyyy-MM-dd');
 
-  const walletBalances = useMemo(() => {
-    return wallets.map((w) => {
-      const fromSalary = salaries
-        .filter((s) => s.wallet_account_id === w.id)
-        .reduce((s, x) => s + Number(x.amount), 0);
-      const fromExtra = extraIncomes
-        .filter((s) => s.wallet_account_id === w.id)
-        .reduce((s, x) => s + Number(x.amount), 0);
-      const fromDistributions = allDistributions
-        .filter((d) => d.wallet_account_id === w.id)
-        .reduce((s, d) => s + Number(d.amount), 0);
-      const transfersIn = transfers
-        .filter((t) => t.to_wallet_id === w.id)
-        .reduce((s, t) => s + Number(t.amount), 0);
-      const transfersOut = transfers
-        .filter((t) => t.from_wallet_id === w.id)
-        .reduce((s, t) => s + Number(t.amount), 0);
-      const credited = fromSalary + fromExtra + fromDistributions + transfersIn - transfersOut;
-
-      const spentOneOff = walletExpenses
-        .filter((x) => {
-          const isPaid = expensePayments.find((p) => p.expense_id === x.id && p.paid)?.paid ?? false;
-          return x.wallet_account_id === w.id && isPaid;
-        })
-        .reduce((s, x) => s + Number(x.amount), 0);
-      const spentFixed = fixedExpenses
-        .filter((f) => f.wallet_account_id === w.id)
-        .reduce((s, f) => {
-          const paidMonths = fixedPayments.filter((p) => p.fixed_expense_id === f.id && p.paid);
-          const total = paidMonths.reduce((sum, p) => sum + (p.amount ?? Number(f.amount)), 0);
-          return s + total;
-        }, 0);
-      const spentCardPayments = cardPayments
-        .filter((cp) => cp.wallet_account_id === w.id)
-        .reduce((s, cp) => s + Number(cp.amount), 0);
-      const spent = spentOneOff + spentFixed + spentCardPayments;
-      return { wallet: w, balance: credited - spent };
-    });
-  }, [wallets, salaries, extraIncomes, allDistributions, transfers, walletExpenses, fixedExpenses, fixedPayments, cardPayments, expensePayments]);
-
-  const walletTotal = walletBalances.reduce((s, w) => s + w.balance, 0);
-
   return (
     <AppLayout
       title="Home"
@@ -486,47 +346,6 @@ export default function Dashboard() {
               formula="Income − Spent"
             />
           </div>
-
-          {walletBalances.length > 0 && (
-            <div className="mt-6">
-              <div className="label-mono mb-3">Wallet Snapshot</div>
-              <div
-                className="grid gap-3"
-                style={{ gridTemplateColumns: `repeat(auto-fit, minmax(180px, 1fr))` }}
-              >
-                {walletBalances.map(({ wallet, balance }) => (
-                  <div key={wallet.id} className="rounded-md border border-border bg-surface p-4">
-                    <div className="mb-2 flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: wallet.color }} />
-                      <div className="text-[12.5px] text-muted-foreground">{wallet.name}</div>
-                    </div>
-                    <div
-                      className={cn(
-                        "num text-[18px] tracking-tight",
-                        balance < 0 ? "text-destructive" : "text-foreground"
-                      )}
-                    >
-                      {formatMoney(balance)}
-                    </div>
-                  </div>
-                ))}
-                <div className="rounded-md border border-primary/40 bg-primary/5 p-4">
-                  <div className="mb-2 flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-primary" />
-                    <div className="text-[12.5px] text-muted-foreground">Total</div>
-                  </div>
-                  <div
-                    className={cn(
-                      "num text-[18px] tracking-tight",
-                      walletTotal < 0 ? "text-destructive" : "text-foreground"
-                    )}
-                  >
-                    {formatMoney(walletTotal)}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
           <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-12 items-stretch">
             <Panel className="lg:col-span-4 flex flex-col">
