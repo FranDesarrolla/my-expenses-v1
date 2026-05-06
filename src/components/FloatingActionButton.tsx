@@ -803,8 +803,7 @@ export function FloatingActionButton() {
           {actions.map((action, index) => (
             <div
               key={action.id}
-              className="flex items-center justify-end gap-2 animate-in slide-in-from-bottom-2 fade-in duration-200"
-              style={{ animationDelay: `${(index + 1) * 60}ms` }}
+              className="flex items-center justify-end gap-2"
             >
               <span className="text-[11px] text-muted-foreground bg-surface px-2 py-1 rounded border border-border whitespace-nowrap">
                 {action.label}

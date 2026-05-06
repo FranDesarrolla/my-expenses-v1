@@ -321,9 +321,9 @@ const monthCardPays = allCardPays.filter(p => p.month === ms);
     <AppLayout
       title="Home"
       subtitle="Command your cashflow."
-      actions={<MonthSelector value={month} onChange={setMonth} />}
     >
-      <div className="mb-6 inline-flex rounded-full border border-border bg-surface p-1">
+      <div className="flex items-center justify-between mb-6">
+        <div className="inline-flex rounded-full border border-border bg-surface p-1">
         <button
           type="button"
           onClick={() => setView("overview")}
@@ -347,7 +347,9 @@ const monthCardPays = allCardPays.filter(p => p.month === ms);
           )}
         >
           Dashboard
-        </button>
+          </button>
+        </div>
+        <MonthSelector value={month} onChange={setMonth} />
       </div>
 
       {view === "dashboard" ? (

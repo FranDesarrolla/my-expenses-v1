@@ -125,7 +125,7 @@ export default function FixedExpenses() {
             <DialogTrigger asChild>
               <Button size="sm" className="gap-1.5">
                 <Plus className="h-3.5 w-3.5" strokeWidth={1.8} />
-                Add Fixed Expense
+                <span className="hidden md:inline">Add Fixed Expense</span>
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[480px]">

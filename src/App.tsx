@@ -16,6 +16,8 @@ import ExtraIncome from "./pages/ExtraIncome";
 import Tables from "./pages/Tables";
 import NotFound from "./pages/NotFound.tsx";
 import Login from "./pages/Login";
+import MercadoPago from "./pages/MercadoPago";
+import Ahorros from "./pages/Ahorros";
 
 const queryClient = new QueryClient();
 
@@ -61,6 +63,8 @@ function AppRoutes() {
       <Route path="/wallet" element={<MyWallet />} />
       <Route path="/categories" element={<Tables />} />
       <Route path="/tables" element={<Tables />} />
+      <Route path="/savings" element={<Ahorros />} />
+      <Route path="/mercadopago" element={<MercadoPago />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

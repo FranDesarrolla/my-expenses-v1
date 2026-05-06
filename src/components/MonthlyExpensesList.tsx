@@ -96,7 +96,7 @@ export function MonthlyExpensesList({ month, interactive = false, refreshKey = 0
     const start = startOfMonthISO(month);
     const end = endOfMonthISO(month);
     const [exps, fxs, fxPays, chs, cp, cds, ctgs, ws, expPays] = await Promise.all([
-      supabase.from("expenses").select("id, amount, description, date, category_id, wallet_account_id").gte("date", start).lte("date", end).order("date", { ascending: false }),
+      supabase.from("expenses").select("id, amount, description, date, category_id, wallet_account_id").gte("date", start).lte("date", end).neq("description", "Savings:*").order("date", { ascending: false }),
       supabase.from("fixed_expenses").select("*").lte("start_date", end).or("end_date.is.null,end_date.gte." + start).order("description"),
       supabase.from("fixed_expense_payments").select("*").eq("month", start),
       supabase.from("card_charges").select("*"),
@@ -251,6 +251,10 @@ export function MonthlyExpensesList({ month, interactive = false, refreshKey = 0
   }
 
   async function deleteExpense(id: string) {
+    const exp = expenses.find(e => e.id === id);
+    if (exp?.description?.startsWith("Savings:")) {
+      return toast.error("Cannot delete savings deposits from here.");
+    }
     await supabase.from("expense_payments").delete().eq("expense_id", id);
     const { error } = await supabase.from("expenses").delete().eq("id", id);
     if (error) return toast.error(error.message);
@@ -260,6 +264,12 @@ export function MonthlyExpensesList({ month, interactive = false, refreshKey = 0
 
   async function saveExpenseEdit() {
     if (!editExpenseData) return;
+    
+    const currentExpense = expenses.find(e => e.id === editExpenseData.id);
+    if (currentExpense?.description?.startsWith("Savings:")) {
+      return toast.error("Cannot edit savings deposits from here.");
+    }
+    
     const amt = parseFloat(editExpenseData.amount);
     if (!amt || amt <= 0) return toast.error("Amount required.");
     

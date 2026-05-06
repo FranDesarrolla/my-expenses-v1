@@ -17,6 +17,8 @@ import {
   LogOut,
   X,
   type LucideIcon,
+  Coins,
+  PiggyBank,
 } from "lucide-react";
 import { useTheme } from "@/lib/theme";
 import { supabase } from "@/integrations/supabase/client";
@@ -28,6 +30,7 @@ type GroupItem = { label: string; icon: LucideIcon; children: LeafItem[] };
 
 const directLinks: LeafItem[] = [
   { to: "/", label: "Home", icon: Home, end: true },
+  { to: "/savings", label: "Savings", icon: PiggyBank, end: true },
 ];
 
 const groups: GroupItem[] = [
@@ -53,6 +56,7 @@ const groups: GroupItem[] = [
     icon: Wallet,
     children: [
       { to: "/wallet", label: "Wallets", icon: Wallet },
+      { to: "/mercadopago", label: "MercadoPago", icon: Coins },
     ],
   },
   {

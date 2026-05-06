@@ -349,7 +349,7 @@ export function OverviewCalendar({ month }: OverviewCalendarProps) {
           <div key={weekIndex} className="grid grid-cols-7 w-full gap-1 mt-1">
             {week.map((day, dayIndex) => {
               if (!day) {
-                return <div key={dayIndex} className="h-[80px] w-full" />;
+                return <div key={dayIndex} className="h-16 sm:h-[80px] w-full" />;
               }
               const dayItems = getDayItems(day);
               const hasIncome = dayItems.incomes.length > 0;
@@ -364,7 +364,7 @@ export function OverviewCalendar({ month }: OverviewCalendarProps) {
                 <div
                   key={dayIndex}
                   className={cn(
-                    "h-[80px] w-full p-1 flex flex-col items-start justify-start rounded-md text-[14px]",
+                    "h-16 sm:h-[80px] w-full p-1 flex flex-col items-start justify-start rounded-md text-[14px]",
                     hasDots ? "cursor-pointer hover:bg-secondary/50" : "cursor-pointer hover:bg-secondary/30"
                   )}
                 >
@@ -376,20 +376,30 @@ export function OverviewCalendar({ month }: OverviewCalendarProps) {
                       {format(day, "d")}
                     </span>
                     <div className="flex flex-col gap-0.5 mt-1">
-                      {hasIncome && (
-                        <span className="text-[8px] font-medium px-1 py-0.5 rounded bg-success/20 text-success text-center">Income</span>
-                      )}
-                      {hasExpense && (
-                        <span className="text-[8px] font-medium px-1 py-0.5 rounded bg-destructive/20 text-destructive text-center">Expense</span>
-                      )}
-                      {dayReminders.map((r, i) => (
-                        <span key={i} className="text-[8px] font-medium px-1 py-0.5 rounded text-center" style={{ backgroundColor: `${r.color}20`, color: r.color }}>
-                          Reminder
-                        </span>
-                      ))}
-                      {hasTransfer && (
-                        <span className="text-[8px] font-medium px-1 py-0.5 rounded bg-primary/20 text-primary text-center">Transfer</span>
-                      )}
+                      <div className="flex flex-wrap gap-1 sm:hidden">
+                        {hasIncome && <span className="h-1.5 w-1.5 rounded-full bg-success" />}
+                        {hasExpense && <span className="h-1.5 w-1.5 rounded-full bg-destructive" />}
+                        {dayReminders.map((r, i) => (
+                          <span key={i} className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: r.color }} />
+                        ))}
+                        {hasTransfer && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
+                      </div>
+                      <div className="hidden sm:flex flex-col gap-0.5">
+                        {hasIncome && (
+                          <span className="text-[8px] font-medium px-1 py-0.5 rounded bg-success/20 text-success text-center">Income</span>
+                        )}
+                        {hasExpense && (
+                          <span className="text-[8px] font-medium px-1 py-0.5 rounded bg-destructive/20 text-destructive text-center">Expense</span>
+                        )}
+                        {dayReminders.map((r, i) => (
+                          <span key={i} className="text-[8px] font-medium px-1 py-0.5 rounded text-center" style={{ backgroundColor: `${r.color}20`, color: r.color }}>
+                            Reminder
+                          </span>
+                        ))}
+                        {hasTransfer && (
+                          <span className="text-[8px] font-medium px-1 py-0.5 rounded bg-primary/20 text-primary text-center">Transfer</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -68,7 +68,7 @@ function AddButton({ table, placeholder }: { table: "categories" | "cards" | "wa
       <DialogTrigger asChild>
         <Button size="sm" className="gap-1.5">
           <Plus className="h-3.5 w-3.5" strokeWidth={1.8} />
-          Add
+          <span className="hidden md:inline">Add</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[400px]">
