@@ -16,8 +16,8 @@ interface Row { id: string; name: string; color: string }
 
 const TABS: { id: Tab; label: string; table: "categories" | "cards" | "wallet_accounts"; placeholder: string }[] = [
   { id: "categories", label: "Categories", table: "categories", placeholder: "Category name (e.g. Food)" },
-  { id: "cards", label: "My Cards", table: "cards", placeholder: "Card name (e.g. Chase Sapphire)" },
-  { id: "wallets", label: "Wallet Accounts", table: "wallet_accounts", placeholder: "Account name (e.g. Mercado Pago)" },
+  { id: "cards", label: "Cards", table: "cards", placeholder: "Card name (e.g. Chase Sapphire)" },
+  { id: "wallets", label: "Wallets", table: "wallet_accounts", placeholder: "Account name (e.g. Mercado Pago)" },
 ];
 
 export default function Tables() {

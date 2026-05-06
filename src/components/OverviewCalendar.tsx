@@ -400,7 +400,7 @@ export function OverviewCalendar({ month }: OverviewCalendarProps) {
       </div>
 
       <Dialog open={!!selectedDate} onOpenChange={() => { setSelectedDate(null); setAddingReminder(false); }}>
-        <DialogContent className="w-[480px] max-h-[80vh] overflow-y-auto [&_[data-radix-dialog-close]]:!top-2">
+        <DialogContent className="w-[95vw] max-w-[480px] max-h-[80vh] overflow-y-auto [&_[data-radix-dialog-close]]:!top-2">
           <DialogHeader className="flex flex-row items-center justify-between">
             <DialogTitle>{selectedDate && format(selectedDate, "MMMM d, yyyy")}</DialogTitle>
             <Button
