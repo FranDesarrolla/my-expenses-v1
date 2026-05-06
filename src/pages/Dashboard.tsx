@@ -67,9 +67,11 @@ interface FixedPayment {
   amount?: number;
 }
 
-interface ChargePayment {
-  paid: boolean;
-  charge_id: string;
+interface CardPayment {
+  id: string;
+  card_id: string;
+  month: string;
+  amount: number;
 }
 
 interface Charge {
@@ -111,7 +113,7 @@ export default function Dashboard() {
   const [sixMonths, setSixMonths] = useState<{ label: string; spent: number; current: boolean }[]>([]);
   const [cards, setCards] = useState<Card[]>([]);
   const [charges, setCharges] = useState<Charge[]>([]);
-  const [chargePays, setChargePays] = useState<ChargePayment[]>([]);
+  const [cardPays, setCardPays] = useState<CardPayment[]>([]);
 
   const [expensePayments, setExpensePayments] = useState<ExpensePayment[]>([]);
 
@@ -124,13 +126,13 @@ export default function Dashboard() {
     const start = monthISO;
     const end = endOfMonthISO(month);
 
-    const [
+const [
       cats,
       exps,
       sal,
       cds,
       chs,
-      pays,
+      cp,
       fxs,
       fxPays,
       extra,
@@ -141,9 +143,9 @@ export default function Dashboard() {
       supabase.from("salary").select("wallet_account_id, amount, month").eq("month", start),
       supabase.from("cards").select("*"),
       supabase.from("card_charges").select("*"),
-      supabase.from("charge_payments").select("paid, charge_id").eq("month", start),
+      (supabase.from("card_payments" as any).select("id, card_id, month, amount") as any),
       supabase.from("fixed_expenses").select("*").lte("start_date", end).or("end_date.is.null,end_date.gte." + start),
-      supabase.from("fixed_expense_payments").select("fixed_expense_id, month, paid, paid_at").eq("month", start),
+      supabase.from("fixed_expense_payments").select("fixed_expense_id, month, paid, paid_at, amount").eq("month", start),
       supabase.from("extra_income" as never).select("wallet_account_id, amount, date, concept").gte("date", start).lte("date", end),
       (supabase.from("expense_payments" as any).select("expense_id, paid") as any),
     ]);
@@ -153,7 +155,7 @@ export default function Dashboard() {
     setSalaryAmt(((sal.data ?? []) as { amount: number }[]).reduce((s, r) => s + Number(r.amount), 0));
     setCards(cds.data ?? []);
     setCharges((chs.data ?? []) as Charge[]);
-    setChargePays((pays.data ?? []) as ChargePayment[]);
+    setCardPays((cp.data ?? []) as CardPayment[]);
     setFixed((fxs.data ?? []) as FixedExpense[]);
     setFixedPays((fxPays.data ?? []) as FixedPayment[]);
     setExtraIncomeAmt(((extra.data ?? []) as { amount: number }[]).reduce((s, r) => s + Number(r.amount), 0));
@@ -165,17 +167,17 @@ export default function Dashboard() {
     const sixStartStr = startOfMonthISO(sixMonthsStart);
     const sixEndStr = endOfMonthISO(month);
 
-    const [sixExpData, sixExpPaysData, sixFixedPaysData, sixChargePaysData] = await Promise.all([
+const [sixExpData, sixExpPaysData, sixFixedPaysData, sixCardPaysData] = await Promise.all([
       supabase.from("expenses").select("id, amount, date").gte("date", sixStartStr).lte("date", sixEndStr),
       (supabase.from("expense_payments" as any).select("expense_id, paid, paid_at").gte("paid_at", sixStartStr).lte("paid_at", sixEndStr) as any),
       (supabase.from("fixed_expense_payments" as any).select("fixed_expense_id, month, paid, amount").gte("month", sixStartStr).lte("month", sixEndStr) as any),
-      supabase.from("charge_payments").select("charge_id, month, paid").gte("month", sixStartStr).lte("month", sixEndStr),
+      (supabase.from("card_payments" as any).select("card_id, month, amount").gte("month", sixStartStr).lte("month", sixEndStr) as any),
     ]);
 
     const allExpenses = sixExpData.data ?? [];
     const allExpPays = (sixExpPaysData.data ?? []) as { expense_id: string; paid: boolean }[];
     const allFixedPays = (sixFixedPaysData.data ?? []) as { fixed_expense_id: string; month: string; paid: boolean; amount?: number }[];
-    const allChargePays = (sixChargePaysData.data ?? []) as { charge_id: string; month: string; paid: boolean }[];
+    const allCardPays = (sixCardPaysData.data ?? []) as { card_id: string; month: string; amount: number }[];
 
     const fixedList = (fxs.data ?? []) as FixedExpense[];
     const allCharges = (chs.data ?? []) as Charge[];
@@ -199,26 +201,8 @@ export default function Dashboard() {
         return s + (payment ? (payment.amount ?? Number(f.amount)) : 0);
       }, 0);
 
-      const monthChargePays = allChargePays.filter(p => p.month === ms && p.paid);
-      const activeChargesForMonth = allCharges.filter(c => {
-        const start = new Date(c.start_date);
-        const monthsSinceStart = (m.getFullYear() - start.getFullYear()) * 12 + (m.getMonth() - start.getMonth());
-        if (c.type === "one-time") {
-          return start.getFullYear() === m.getFullYear() && start.getMonth() === m.getMonth();
-        }
-        if (monthsSinceStart < 0) return false;
-        if (c.type === "recurring") {
-          if (!c.end_date) return true;
-          const end = new Date(c.end_date);
-          const monthsUntilEnd = (end.getFullYear() - m.getFullYear()) * 12 + (end.getMonth() - m.getMonth());
-          return monthsUntilEnd >= 0;
-        }
-        return monthsSinceStart >= 0 && monthsSinceStart < c.total_installments;
-      });
-      const chargesSum = activeChargesForMonth.reduce((s, c) => {
-        const isPaid = monthChargePays.some(p => p.charge_id === c.id);
-        return s + (isPaid ? Number(c.monthly_amount) : 0);
-      }, 0);
+const monthCardPays = allCardPays.filter(p => p.month === ms);
+      const chargesSum = monthCardPays.reduce((s, p) => s + Number(p.amount), 0);
 
       months.push({ label: monthShort(m), spent: expTotal + fixedSum + chargesSum, current: i === 0 });
     }
@@ -226,6 +210,7 @@ export default function Dashboard() {
   }
 
   const activeCharges = useMemo(() => computeActiveCharges(charges, month), [charges, month]);
+  const monthISO = formatDate(month, 'yyyy-MM-01');
 
   const fixedTotal = fixed.reduce((s, f) => s + Number(f.amount), 0);
   const chargesTotal = activeCharges.reduce((s, c) => s + Number(c.monthly_amount), 0);
@@ -235,21 +220,47 @@ export default function Dashboard() {
     const payment = fixedPays.find(p => p.fixed_expense_id === f.id);
     return payment?.amount ?? f.amount;
   };
-  const isChargePaid = (id: string) => chargePays.find((p) => p.charge_id === id)?.paid ?? false;
+  const isChargePaid = (id: string) => {
+    const charge = charges.find((c) => c.id === id);
+    if (!charge) return false;
+    return cardPays.some((p) => p.card_id === charge.card_id && p.month === monthISO);
+  };
   const isExpensePaid = (id: string) => expensePayments.find((p) => p.expense_id === id && p.paid)?.paid ?? false;
 
   const paidExpenses = expenses.filter((e) => isExpensePaid(e.id)).reduce((s, e) => s + Number(e.amount), 0);
   const paidFixed = fixed.filter((f) => isFixedPaid(f.id)).reduce((s, f) => s + Number(getFixedAmount(f)), 0);
-  const paidCharges = activeCharges.filter((c) => isChargePaid(c.id)).reduce((s, c) => s + Number(c.monthly_amount), 0);
+  const paidCharges = cardPays
+    .filter((p) => p.month === monthISO)
+    .reduce((s, p) => s + Number(p.amount), 0);
   const spent = paidExpenses + paidFixed + paidCharges;
 
+  const paidCardIds = new Set(cardPays.filter((p) => p.month === monthISO).map((p) => p.card_id));
   const unpaidExpenses = expenses.filter((e) => !isExpensePaid(e.id)).reduce((s, e) => s + Number(e.amount), 0);
   const unpaidFixed = fixed.filter((f) => !isFixedPaid(f.id)).reduce((s, f) => s + Number(getFixedAmount(f)), 0);
-  const unpaidCharges = activeCharges.filter((c) => !isChargePaid(c.id)).reduce((s, c) => s + Number(c.monthly_amount), 0);
+  const unpaidCharges = activeCharges
+    .filter((c) => !paidCardIds.has(c.card_id))
+    .reduce((s, c) => s + Number(c.monthly_amount), 0);
   const committed = unpaidExpenses + unpaidFixed + unpaidCharges;
 
   const totalIncome = salaryAmt + extraIncomeAmt;
   const available = totalIncome - spent;
+
+  const paidCardsMap = useMemo(() => {
+    const map = new Map<string, { amount: number; categoryId: string | null }>();
+    cardPays
+      .filter((p) => p.month === monthISO)
+      .forEach((p) => {
+        const cardCharges = activeCharges.filter((c) => c.card_id === p.card_id);
+        const categoryId = cardCharges[0]?.category_id ?? null;
+        const existing = map.get(p.card_id);
+        if (existing) {
+          existing.amount += Number(p.amount);
+        } else {
+          map.set(p.card_id, { amount: Number(p.amount), categoryId });
+        }
+      });
+    return map;
+  }, [cardPays, activeCharges, monthISO]);
 
   const byCategory = useMemo(() => {
     const map = new Map<string, number>();
@@ -257,23 +268,21 @@ export default function Dashboard() {
       const k = catId ?? "uncat";
       map.set(k, (map.get(k) ?? 0) + amt);
     };
-    expenses.forEach((e) => add(e.category_id, Number(e.amount)));
-    fixed.forEach((f) => add(f.category_id, Number(f.amount)));
-    activeCharges.forEach((c) => add(c.category_id, Number(c.monthly_amount)));
+    expenses.filter((e) => isExpensePaid(e.id)).forEach((e) => add(e.category_id, Number(e.amount)));
+    fixed.filter((f) => isFixedPaid(f.id)).forEach((f) => add(f.category_id, Number(getFixedAmount(f))));
+    paidCardsMap.forEach(({ amount, categoryId }) => {
+      add(categoryId, amount);
+    });
     return Array.from(map.entries())
       .map(([id, value]) => {
         const c = categories.find((c) => c.id === id);
         return { name: c?.name ?? "Uncategorized", value, color: c?.color ?? "#8B867D" };
       })
       .sort((a, b) => b.value - a.value);
-  }, [expenses, fixed, activeCharges, categories]);
+  }, [expenses, fixed, categories, fixedPays, expensePayments, paidCardsMap]);
 
   const topCats = byCategory.slice(0, 5);
   const totalForPct = byCategory.reduce((s, x) => s + x.value, 0) || 1;
-
-  const monthISO = formatDate(month, 'yyyy-MM-01');
-  const monthStart = formatDate(startOfMonth(month), 'yyyy-MM-dd');
-  const monthEnd = formatDate(endOfMonth(month), 'yyyy-MM-dd');
 
   return (
     <AppLayout

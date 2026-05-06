@@ -142,7 +142,7 @@ export default function AddCharge() {
 
   async function saveEdit() {
     if (!editing) return;
-    const amt = Number(editing.monthly_amount);
+    const amt = parseFloat(String(editing.monthly_amount));
     if (!editing.description.trim() || !amt || amt <= 0) return toast.error("Fill all required fields.");
     const installments =
       editing.type === "installment" ? Math.max(1, Number(editing.total_installments) || 1) : 1;
@@ -746,12 +746,15 @@ const monthCharges = useMemo(() => {
               </div>
               <div className="md:col-span-4">
                 <div className="label-mono mb-1">Amount</div>
-                <Input
-                  className="num"
-                  inputMode="decimal"
-                  value={String(editing.monthly_amount)}
-                  onChange={(e) => setEditing({ ...editing, monthly_amount: Number(e.target.value) })}
-                />
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">$</span>
+                  <Input
+                    className="num pl-6"
+                    inputMode="decimal"
+                    value={String(editing.monthly_amount)}
+                    onChange={(e) => setEditing({ ...editing, monthly_amount: e.target.value })}
+                  />
+                </div>
               </div>
               <div className="md:col-span-4">
                 <div className="label-mono mb-1">Installments</div>
@@ -760,7 +763,7 @@ const monthCharges = useMemo(() => {
                   type="number"
                   min={1}
                   value={String(editing.total_installments)}
-                  onChange={(e) => setEditing({ ...editing, total_installments: Number(e.target.value) })}
+                  onChange={(e) => setEditing({ ...editing, total_installments: e.target.value })}
                   disabled={editing.type !== "installment"}
                 />
               </div>

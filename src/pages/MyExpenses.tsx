@@ -49,6 +49,10 @@ export default function MyExpenses() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  useEffect(() => {
+    setRefreshKey((k) => k + 1);
+  }, []);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const amt = parseFloat(amount);

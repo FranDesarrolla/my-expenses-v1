@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/dialog";
 import { format, parseISO, startOfMonth, endOfMonth } from "date-fns";
 import { toast } from "sonner";
+import { MonthSelector } from "@/components/MonthSelector";
+import { startOfMonthISO, endOfMonthISO } from "@/lib/format";
 
 interface Wallet { id: string; name: string; color: string }
 interface Distribution { id: string; wallet_account_id: string; month: string; amount: number }
@@ -52,13 +54,31 @@ export default function MyWallet() {
   const [fixedExpenses, setFixedExpenses] = useState<FixedRow[]>([]);
   const [fixedPayments, setFixedPayments] = useState<FixedPayment[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
+  const [filteredTransfers, setFilteredTransfers] = useState<Transfer[]>([]);
   const [cardPayments, setCardPayments] = useState<CardPayment[]>([]);
+
+  const [historyData, setHistoryData] = useState<{
+    salaries: { amount: number; month: string }[];
+    extraIncomes: { amount: number; date: string }[];
+    distributions: { amount: number; month: string }[];
+    expenses: { id: string; amount: number; date: string; description: string | null; category_id: string | null }[];
+    expensePayments: { expense_id: string; paid: boolean }[];
+    fixedPayments: { fixed_expense_id: string; month: string; paid: boolean; amount?: number; description?: string }[];
+    cardPaymentsHistory: { amount: number; month: string; date: string }[];
+    transfers: { amount: number; date: string; from_wallet_id: string | null; to_wallet_id: string | null; notes: string | null }[];
+    categories: { id: string; name: string; color: string }[];
+  } | null>(null);
 
   const [fromId, setFromId] = useState<string>("");
   const [toId, setToId] = useState<string>("");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState("");
+
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
+  const [historyMonth, setHistoryMonth] = useState(startOfMonth(new Date()));
+  const [historyFilterMonth, setHistoryFilterMonth] = useState(startOfMonth(new Date()));
 
   useEffect(() => { void load(); }, [month]);
 
@@ -70,7 +90,7 @@ export default function MyWallet() {
       supabase.from("wallet_distributions").select("*"),
       supabase.from("expenses").select("id, wallet_account_id, amount"),
       supabase.from("fixed_expenses").select("id, wallet_account_id, amount").lte("start_date", format(endOfMonth(month), "yyyy-MM-dd")).or("end_date.is.null,end_date.gte." + format(startOfMonth(month), "yyyy-MM-dd")),
-      supabase.from("fixed_expense_payments").select("fixed_expense_id, month, paid"),
+      supabase.from("fixed_expense_payments").select("fixed_expense_id, month, paid, amount"),
       supabase.from("wallet_transfers").select("*").order("date", { ascending: false }),
       (supabase.from("card_payments" as any).select("wallet_account_id, amount, month") as any),
       (supabase.from("expense_payments" as any).select("expense_id, paid") as any),
@@ -87,6 +107,14 @@ export default function MyWallet() {
     setCardPayments((cp.data ?? []) as CardPayment[]);
   }
 
+  useEffect(() => {
+    const start = startOfMonthISO(historyFilterMonth);
+    const end = endOfMonthISO(historyFilterMonth);
+    setFilteredTransfers(
+      transfers.filter((t) => t.date >= start && t.date <= end)
+    );
+  }, [historyFilterMonth, transfers]);
+
   const balances = useMemo(() => {
     return wallets.map((w) => {
       const fromSalary = salaries.filter((s) => s.wallet_account_id === w.id).reduce((s, x) => s + Number(x.amount), 0);
@@ -94,7 +122,7 @@ export default function MyWallet() {
       const fromDistributions = allDistributions.filter((d) => d.wallet_account_id === w.id).reduce((s, d) => s + Number(d.amount), 0);
       const transfersIn = transfers.filter((t) => t.to_wallet_id === w.id).reduce((s, t) => s + Number(t.amount), 0);
       const transfersOut = transfers.filter((t) => t.from_wallet_id === w.id).reduce((s, t) => s + Number(t.amount), 0);
-      const credited = fromSalary + fromExtra + fromDistributions + transfersIn - transfersOut;
+      const income = fromSalary + fromExtra + fromDistributions + transfersIn;
 
       const spentOneOff = expenses
         .filter((x) => {
@@ -112,8 +140,8 @@ export default function MyWallet() {
       const spentCardPayments = cardPayments
         .filter((cp) => cp.wallet_account_id === w.id)
         .reduce((s, cp) => s + Number(cp.amount), 0);
-      const spent = spentOneOff + spentFixed + spentCardPayments;
-      return { wallet: w, credited, spent, balance: credited - spent };
+      const expense = spentOneOff + spentFixed + spentCardPayments + transfersOut;
+      return { wallet: w, income, expense, balance: income - expense };
     });
   }, [wallets, salaries, extraIncomes, allDistributions, transfers, expenses, fixedExpenses, fixedPayments, cardPayments, expensePayments]);
 
@@ -148,6 +176,88 @@ export default function MyWallet() {
 
   const walletName = (id: string | null) => wallets.find((w) => w.id === id)?.name ?? "—";
   const walletColor = (id: string | null) => wallets.find((w) => w.id === id)?.color ?? "transparent";
+
+  interface Category { id: string; name: string; color: string }
+
+async function openWalletHistory(wallet: Wallet) {
+    setSelectedWallet(wallet);
+    setHistoryMonth(startOfMonth(new Date()));
+    setHistoryOpen(true);
+  }
+
+  useEffect(() => {
+    if (!historyOpen || !selectedWallet) return;
+    const start = startOfMonthISO(historyMonth);
+    const end = endOfMonthISO(historyMonth);
+    const histMonthISO = startOfMonthISO(historyMonth);
+    void Promise.all([
+      supabase.from("salary").select("amount, month").eq("wallet_account_id", selectedWallet.id).gte("month", start).lte("month", end),
+      supabase.from("extra_income" as never).select("amount, date").eq("wallet_account_id", selectedWallet.id).gte("date", start).lte("date", end),
+      supabase.from("wallet_distributions").select("amount, month").eq("wallet_account_id", selectedWallet.id).gte("month", start).lte("month", end),
+      supabase.from("expenses").select("id, amount, date, description, category_id").eq("wallet_account_id", selectedWallet.id).gte("date", start).lte("date", end),
+      (supabase.from("expense_payments" as any).select("expense_id, paid") as any),
+      supabase.from("fixed_expenses").select("id, description, amount, wallet_account_id"),
+      supabase.from("fixed_expense_payments").select("fixed_expense_id, month, paid, amount").eq("month", histMonthISO),
+      (supabase.from("card_payments" as any).select("amount, month, date").eq("wallet_account_id", selectedWallet.id).gte("month", start).lte("month", end) as any),
+      supabase.from("wallet_transfers").select("amount, date, from_wallet_id, to_wallet_id, notes").gte("date", start).lte("date", end),
+      supabase.from("categories").select("*"),
+    ]).then(([sal, ei, dist, exp, expPay, fx, fxPay, cp, tr, cats]) => {
+      const categories = (cats.data ?? []) as Category[];
+      const fixedList = (fx.data ?? []) as { id: string; description: string; amount: number; wallet_account_id: string | null }[];
+      const fixedPays = (fxPay.data ?? []) as { fixed_expense_id: string; month: string; paid: boolean; amount?: number }[];
+      const fixedPaidForWallet = fixedList
+        .filter(f => f.wallet_account_id === selectedWallet.id)
+        .flatMap(f => {
+          const payment = fixedPays.find(p => p.fixed_expense_id === f.id && p.paid);
+          if (payment) {
+            return [{ description: f.description, amount: payment.amount ?? f.amount, month: payment.month }];
+          }
+          return [];
+        });
+      setHistoryData({
+        salaries: (sal.data ?? []) as { amount: number; month: string }[],
+        extraIncomes: (ei.data ?? []) as { amount: number; date: string }[],
+        distributions: (dist.data ?? []) as { amount: number; month: string }[],
+        expenses: (exp.data ?? []) as { id: string; amount: number; date: string; description: string | null; category_id: string | null }[],
+        expensePayments: (expPay.data ?? []) as { expense_id: string; paid: boolean }[],
+        fixedPayments: fixedPaidForWallet as { fixed_expense_id: string; month: string; paid: boolean; amount?: number }[],
+        cardPaymentsHistory: (cp.data ?? []) as { amount: number; month: string; date: string }[],
+        transfers: (tr.data ?? []) as { amount: number; date: string; from_wallet_id: string | null; to_wallet_id: string | null; notes: string | null }[],
+        categories,
+      });
+    });
+  }, [historyOpen, selectedWallet, historyMonth]);
+
+  const historyTotals = useMemo(() => {
+    if (!historyData || !selectedWallet) return { income: 0, expense: 0, net: 0 };
+    let income = 0;
+    let expense = 0;
+
+    historyData.salaries.forEach(s => income += Number(s.amount));
+    historyData.extraIncomes.forEach(e => income += Number(e.amount));
+    historyData.distributions.forEach(d => income += Number(d.amount));
+
+    historyData.expenses.filter(e => {
+      const payment = historyData.expensePayments.find(p => p.expense_id === e.id && p.paid);
+      return !!payment;
+    }).forEach(e => expense += Number(e.amount));
+
+    historyData.fixedPayments.forEach(fp => expense += Number(fp.amount ?? 0));
+
+    historyData.cardPaymentsHistory.forEach(cp => expense += Number(cp.amount));
+
+    historyData.transfers
+      .filter(t => t.from_wallet_id === selectedWallet.id || t.to_wallet_id === selectedWallet.id)
+      .forEach(t => {
+        if (t.to_wallet_id === selectedWallet.id) {
+          income += Number(t.amount);
+        } else {
+          expense += Number(t.amount);
+        }
+      });
+
+    return { income, expense, net: income - expense };
+  }, [historyData, selectedWallet]);
 
   return (
     <AppLayout
@@ -241,16 +351,20 @@ export default function MyWallet() {
               <div className="md:col-span-3 rounded-md border border-border bg-surface p-8 text-center text-[12px] text-muted-foreground">
                 No wallet accounts yet. Add some in Tables.
               </div>
-            ) : balances.map(({ wallet, credited, spent, balance }) => (
-              <div key={wallet.id} className="rounded-md border border-border bg-surface p-5">
+            ) : balances.map(({ wallet, income, expense, balance }) => (
+              <div
+                key={wallet.id}
+                className="rounded-md border border-border bg-surface p-5 cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => openWalletHistory(wallet)}
+              >
                 <div className="mb-3 flex items-center gap-2">
                   <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: wallet.color }} />
                   <div className="text-[13px] text-foreground">{wallet.name}</div>
                 </div>
                 <div className="num text-[22px] font-medium tracking-tight text-foreground">{formatMoney(balance)}</div>
                 <div className="mt-3 flex justify-between text-[11px] text-muted-foreground">
-                  <span>In: <span className="num text-foreground">{formatMoney(credited)}</span></span>
-                  <span>Out: <span className="num text-foreground">{formatMoney(spent)}</span></span>
+                  <span>In: <span className="num text-foreground">{formatMoney(income)}</span></span>
+                  <span>Out: <span className="num text-foreground">{formatMoney(expense)}</span></span>
                 </div>
               </div>
             ))}
@@ -263,11 +377,12 @@ export default function MyWallet() {
             </div>
           )}
         <section className="rounded-md border border-border bg-surface">
-        <div className="border-b border-border px-5 py-3">
+        <div className="border-b border-border px-5 py-3 flex items-center justify-between">
           <div className="label-mono">History</div>
+          <MonthSelector value={historyFilterMonth} onChange={setHistoryFilterMonth} />
         </div>
-            {transfers.length === 0 ? (
-              <div className="py-10 text-center text-[12px] text-muted-foreground">No transfers yet.</div>
+            {filteredTransfers.length === 0 ? (
+              <div className="py-10 text-center text-[12px] text-muted-foreground">No transfers for this month.</div>
             ) : (
               <table className="w-full">
                 <thead>
@@ -280,7 +395,7 @@ export default function MyWallet() {
                   </tr>
                 </thead>
                 <tbody>
-                  {transfers.map((t) => (
+                  {filteredTransfers.map((t) => (
                     <tr key={t.id} className="h-11 border-t border-border">
                       <td className="num px-5 text-[13px]">
                         {new Date(t.date).toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" })}
@@ -311,6 +426,154 @@ export default function MyWallet() {
               </table>
             )}
           </section>
+
+      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+        <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedWallet && (
+                <>
+                  <span className="h-3 w-3 rounded-full" style={{ backgroundColor: selectedWallet.color }} />
+                  {selectedWallet.name} — History
+                </>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="mb-4">
+            <MonthSelector value={historyMonth} onChange={setHistoryMonth} />
+          </div>
+          {historyData && (
+            <div className="space-y-4">
+              {historyData.salaries.length === 0 &&
+                historyData.extraIncomes.length === 0 &&
+                historyData.distributions.length === 0 &&
+                historyData.expenses.length === 0 &&
+                historyData.cardPaymentsHistory.length === 0 &&
+                historyData.transfers.filter(t => t.from_wallet_id === selectedWallet?.id || t.to_wallet_id === selectedWallet?.id).length === 0 && (
+                <div className="py-8 text-center text-[12px] text-muted-foreground">No transactions for this month.</div>
+              )}
+
+              {historyData.salaries.length > 0 && (
+                <div>
+                  <div className="label-mono mb-2 text-[11px] text-muted-foreground">Salary</div>
+                  {historyData.salaries.map((s, i) => (
+                    <div key={i} className="flex justify-between py-1 text-[12px]">
+                      <span>{s.month}</span>
+                      <span className="num text-success">+{formatMoney(s.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {historyData.extraIncomes.length > 0 && (
+                <div>
+                  <div className="label-mono mb-2 text-[11px] text-muted-foreground">Extra Income</div>
+                  {historyData.extraIncomes.map((e, i) => (
+                    <div key={i} className="flex justify-between py-1 text-[12px]">
+                      <span>{new Date(e.date).toLocaleDateString("en-US", { day: "2-digit", month: "short" })}</span>
+                      <span className="num text-success">+{formatMoney(e.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {historyData.distributions.length > 0 && (
+                <div>
+                  <div className="label-mono mb-2 text-[11px] text-muted-foreground">Distributions</div>
+                  {historyData.distributions.map((d, i) => (
+                    <div key={i} className="flex justify-between py-1 text-[12px]">
+                      <span>{d.month}</span>
+                      <span className="num text-success">+{formatMoney(d.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {historyData.expenses.filter(e => {
+                const payment = historyData.expensePayments.find(p => p.expense_id === e.id && p.paid);
+                return !!payment;
+              }).length > 0 && (
+                <div>
+                  <div className="label-mono mb-2 text-[11px] text-muted-foreground">Expenses (Paid)</div>
+                  {historyData.expenses.filter(e => {
+                    const payment = historyData.expensePayments.find(p => p.expense_id === e.id && p.paid);
+                    return !!payment;
+                  }).map((e, i) => (
+                    <div key={i} className="flex justify-between py-1 text-[12px]">
+                      <span>{e.description ?? "Expense"} — {new Date(e.date).toLocaleDateString("en-US", { day: "2-digit", month: "short" })}</span>
+                      <span className="num text-destructive">-{formatMoney(e.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {historyData.cardPaymentsHistory.length > 0 && (
+                <div>
+                  <div className="label-mono mb-2 text-[11px] text-muted-foreground">Card Payments</div>
+                  {historyData.cardPaymentsHistory.map((cp, i) => (
+                    <div key={i} className="flex justify-between py-1 text-[12px]">
+                      <span>{cp.month}</span>
+                      <span className="num text-destructive">-{formatMoney(cp.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {historyData.fixedPayments.length > 0 && (
+                <div>
+                  <div className="label-mono mb-2 text-[11px] text-muted-foreground">Fixed Expenses (Paid)</div>
+                  {historyData.fixedPayments.map((fp, i) => (
+                    <div key={i} className="flex justify-between py-1 text-[12px]">
+                      <span>{fp.description || "Fixed Expense"} — {fp.month}</span>
+                      <span className="num text-destructive">-{formatMoney(fp.amount ?? 0)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {historyData.transfers.filter(t => t.from_wallet_id === selectedWallet?.id || t.to_wallet_id === selectedWallet?.id).length > 0 && (
+                <div>
+                  <div className="label-mono mb-2 text-[11px] text-muted-foreground">Transfers</div>
+                  {historyData.transfers.filter(t => t.from_wallet_id === selectedWallet?.id || t.to_wallet_id === selectedWallet?.id).map((t, i) => {
+                    const isIncoming = t.to_wallet_id === selectedWallet?.id;
+                    return (
+                      <div key={i} className="flex justify-between py-1 text-[12px]">
+                        <span>
+                          {isIncoming ? "From " : "To "}
+                          {isIncoming ? walletName(t.from_wallet_id) : walletName(t.to_wallet_id)}
+                          {t.notes && <span className="text-muted-foreground"> — {t.notes}</span>}
+                        </span>
+                        <span className={isIncoming ? "num text-success" : "num text-destructive"}>
+                          {isIncoming ? "+" : "-"}{formatMoney(t.amount)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="mt-6 pt-4 border-t border-border">
+                <div className="grid grid-cols-3 gap-4 text-[12px]">
+                  <div className="text-center">
+                    <div className="label-mono text-[10px] text-muted-foreground mb-1">Income</div>
+                    <div className="num text-success font-medium">{formatMoney(historyTotals.income)}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="label-mono text-[10px] text-muted-foreground mb-1">Expense</div>
+                    <div className="num text-destructive font-medium">{formatMoney(historyTotals.expense)}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="label-mono text-[10px] text-muted-foreground mb-1">Net</div>
+                    <div className={`num font-medium ${historyTotals.net >= 0 ? "text-success" : "text-destructive"}`}>
+                      {historyTotals.net >= 0 ? "+" : ""}{formatMoney(historyTotals.net)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }

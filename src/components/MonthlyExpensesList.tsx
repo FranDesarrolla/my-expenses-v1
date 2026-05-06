@@ -41,7 +41,7 @@ interface Charge {
   type: string; monthly_amount: number; total_installments: number;
   current_installment: number; start_date: string; end_date: string | null; active: boolean;
 }
-interface ChargePayment { id?: string; charge_id: string; month: string; paid: boolean }
+interface CardPayment { id: string; card_id: string; month: string; amount: number }
 
 export interface MonthlyExpensesListProps {
   month: Date;
@@ -63,7 +63,7 @@ export function MonthlyExpensesList({ month, interactive = false, refreshKey = 0
   const [fixed, setFixed] = useState<FixedExpense[]>([]);
   const [fixedPays, setFixedPays] = useState<FixedPayment[]>([]);
   const [charges, setCharges] = useState<Charge[]>([]);
-  const [chargePays, setChargePays] = useState<ChargePayment[]>([]);
+  const [cardPays, setCardPays] = useState<CardPayment[]>([]);
   const [cards, setCards] = useState<Card[]>([]);
   const [cats, setCats] = useState<Category[]>([]);
   const [wallets, setWallets] = useState<Wallet[]>([]);
@@ -85,12 +85,12 @@ export function MonthlyExpensesList({ month, interactive = false, refreshKey = 0
     setLoading(true);
     const start = startOfMonthISO(month);
     const end = endOfMonthISO(month);
-    const [exps, fxs, fxPays, chs, chPays, cds, ctgs, ws, expPays] = await Promise.all([
+    const [exps, fxs, fxPays, chs, cp, cds, ctgs, ws, expPays] = await Promise.all([
       supabase.from("expenses").select("id, amount, description, date, category_id, wallet_account_id").gte("date", start).lte("date", end).order("date", { ascending: false }),
       supabase.from("fixed_expenses").select("*").lte("start_date", end).or("end_date.is.null,end_date.gte." + start).order("description"),
       supabase.from("fixed_expense_payments").select("*").eq("month", start),
       supabase.from("card_charges").select("*"),
-      supabase.from("charge_payments").select("*").eq("month", start),
+      (supabase.from("card_payments" as any).select("id, card_id, month, amount") as any),
       supabase.from("cards").select("*"),
       supabase.from("categories").select("*"),
       supabase.from("wallet_accounts").select("*"),
@@ -101,7 +101,7 @@ export function MonthlyExpensesList({ month, interactive = false, refreshKey = 0
     setFixed((fxs.data ?? []) as FixedExpense[]);
     setFixedPays((fxPays.data ?? []) as FixedPayment[]);
     setCharges((chs.data ?? []) as Charge[]);
-    setChargePays((chPays.data ?? []) as ChargePayment[]);
+    setCardPays((cp.data ?? []) as CardPayment[]);
     setCards(cds.data ?? []);
     setCats(ctgs.data ?? []);
     setWallets((ws.data ?? []) as Wallet[]);
@@ -159,15 +159,17 @@ export function MonthlyExpensesList({ month, interactive = false, refreshKey = 0
       .map((card) => {
         const list = monthCharges.filter((c) => c.card_id === card.id);
         const subtotal = list.reduce((s, c) => s + Number(c.monthly_amount), 0);
-        const paidCount = list.filter((c) => chargePays.find((p) => p.charge_id === c.id)?.paid).length;
-        const allPaid = list.length > 0 && paidCount === list.length;
-        return { card, list, subtotal, paidCount, allPaid };
+        const isCardPaid = cardPays.some((p) => p.card_id === card.id && p.month === monthISO);
+        return { card, list, subtotal, isCardPaid };
       })
       .filter((g) => g.list.length > 0);
-  }, [cards, monthCharges, chargePays]);
+  }, [cards, monthCharges, cardPays, monthISO]);
 
-  const isChargePaid = (chargeId: string) =>
-    chargePays.find((p) => p.charge_id === chargeId)?.paid ?? false;
+  const isChargePaid = (chargeId: string) => {
+    const charge = charges.find((c) => c.id === chargeId);
+    if (!charge) return false;
+    return cardPays.some((p) => p.card_id === charge.card_id && p.month === monthISO);
+  };
 
   const isFixedPaid = (fxId: string) =>
     fixedPays.find((p) => p.fixed_expense_id === fxId)?.paid ?? false;
@@ -644,12 +646,12 @@ export function MonthlyExpensesList({ month, interactive = false, refreshKey = 0
                         </span>
                       </td>
                       <td className="num px-4 text-[12px] text-muted-foreground">
-                        {g.list.length} {g.list.length === 1 ? "charge" : "charges"} · {g.paidCount}/{g.list.length} settled
+                        {g.list.length} {g.list.length === 1 ? "charge" : "charges"}
                       </td>
                       <td className="num px-4 text-right text-[13px] font-medium">{formatMoney(g.subtotal)}</td>
                       <td className="px-4 text-right" onClick={(e) => e.stopPropagation()}>
                         <PaidStatus
-                          paid={g.allPaid}
+                          paid={g.isCardPaid}
                           interactive={interactive}
                           onChange={(v) => setCardGroupPaid(g.card.id, v)}
                           disabled={true}
