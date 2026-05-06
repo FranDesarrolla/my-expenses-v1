@@ -384,6 +384,7 @@ async function openWalletHistory(wallet: Wallet) {
             {filteredTransfers.length === 0 ? (
               <div className="py-10 text-center text-[12px] text-muted-foreground">No transfers for this month.</div>
             ) : (
+              <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="label-mono">
@@ -397,19 +398,19 @@ async function openWalletHistory(wallet: Wallet) {
                 <tbody>
                   {filteredTransfers.map((t) => (
                     <tr key={t.id} className="h-11 border-t border-border">
-                      <td className="num px-5 text-[13px]">
+                      <td className="num px-5 text-[13px] whitespace-nowrap">
                         {new Date(t.date).toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" })}
                       </td>
                       <td className="px-5 text-[13px]">
-                        <span className="inline-flex items-center gap-2">
-                          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: walletColor(t.from_wallet_id) }} />
+                        <span className="inline-flex items-center gap-2 max-w-[180px] truncate">
+                          <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: walletColor(t.from_wallet_id) }} />
                           {walletName(t.from_wallet_id)}
-                          <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: walletColor(t.to_wallet_id) }} />
+                          <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                          <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: walletColor(t.to_wallet_id) }} />
                           {walletName(t.to_wallet_id)}
                         </span>
                       </td>
-                      <td className="px-5 text-[12px] text-muted-foreground">{t.notes ?? ""}</td>
+                      <td className="px-5 text-[12px] text-muted-foreground max-w-[100px] truncate">{t.notes ?? ""}</td>
                       <td className="num px-5 text-right text-[13px]">{formatMoney(Number(t.amount))}</td>
                       <td className="px-5 text-right">
                         <button
@@ -424,6 +425,7 @@ async function openWalletHistory(wallet: Wallet) {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </section>
 

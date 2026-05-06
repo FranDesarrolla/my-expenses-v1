@@ -92,7 +92,6 @@ export default function MyExpenses() {
   return (
     <AppLayout
       title="Expenses"
-      subtitle="All records for the month — toggle paid status as you settle them."
       actions={
         <div className="flex items-center gap-2">
           <MonthSelector value={month} onChange={setMonth} />
@@ -100,7 +99,7 @@ export default function MyExpenses() {
             <DialogTrigger asChild>
               <Button size="sm" className="gap-1.5">
                 <Plus className="h-3.5 w-3.5" strokeWidth={1.8} />
-                Add Expense
+                <span className="hidden md:inline">Add Expense</span>
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[480px]">

@@ -42,7 +42,7 @@ export function AppLayout({
       
       <main className="flex-1 overflow-y-auto overflow-x-hidden">
         <div className="mx-auto w-full max-w-[1120px] px-4 sm:px-8 py-8">
-          <header className="mb-8 flex items-end justify-between gap-4 reveal">
+          <header className="mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-4 reveal">
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -62,7 +62,7 @@ export function AppLayout({
                 )}
               </div>
             </div>
-            {actions && <div className="flex items-center gap-2">{actions}</div>}
+            {actions && <div className="flex items-center gap-2 ml-auto sm:ml-0">{actions}</div>}
           </header>
           <div className="reveal" style={{ animationDelay: "60ms" }}>
             {children}

@@ -343,7 +343,7 @@ export default function FixedExpenses() {
         </div>
       }
     >
-      <div className="rounded-md border border-border bg-surface">
+      <div className="rounded-md border border-border bg-surface overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr className="label-mono border-b border-border">
@@ -360,22 +360,22 @@ export default function FixedExpenses() {
               const c = cats.find((x) => x.id === it.category_id);
               return (
                 <tr key={it.id} className="group h-10 border-b border-border last:border-0 hover:bg-accent/40">
-                  <td className="px-5 text-[13px]">{it.description}</td>
+                  <td className="px-5 text-[13px] max-w-[150px] truncate">{it.description}</td>
                   <td className="px-5 text-[13px]">
                     {c ? (
-                      <span className="inline-flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: c.color }} />
+                      <span className="inline-flex items-center gap-2 max-w-[120px] truncate">
+                        <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: c.color }} />
                         {c.name}
                       </span>
                     ) : <span className="text-muted-foreground">—</span>}
                   </td>
                   <td className="num px-5 text-right text-[13px]">{formatMoney(Number(it.amount))}</td>
                   <td className="px-5 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => openEdit(it)} className="text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground">
+                    <div className="flex items-center justify-end gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100">
+                      <button onClick={() => openEdit(it)} className="text-muted-foreground hover:text-foreground">
                         <Pencil className="h-4 w-4" strokeWidth={1.5} />
                       </button>
-                      <button onClick={() => remove(it.id)} className="text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive">
+                      <button onClick={() => remove(it.id)} className="text-muted-foreground hover:text-destructive">
                         <Trash2 className="h-4 w-4" strokeWidth={1.5} />
                       </button>
                     </div>

@@ -954,7 +954,7 @@ function WalletSelect({ wallets, value, onChange }: { wallets: Wallet[]; value: 
 
 function RowActions({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
   return (
-    <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100">
+    <div className="flex justify-end gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100">
       <Button variant="ghost" size="icon" onClick={onEdit} className="h-7 w-7">
         <Pencil className="h-3.5 w-3.5" strokeWidth={1.5} />
       </Button>

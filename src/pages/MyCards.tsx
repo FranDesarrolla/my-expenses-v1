@@ -81,6 +81,7 @@ export default function MyCards() {
         {cards.length === 0 ? (
           <div className="py-10 text-center text-[12px] text-muted-foreground">No cards yet.</div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="label-mono">
@@ -110,7 +111,7 @@ export default function MyCards() {
                       </span>
                     )}
                   </td>
-                  <td className="px-5 text-[13px]">
+                  <td className="px-5 text-[13px] max-w-[150px] truncate">
                     {editingId === c.id ? (
                       <Input className="h-7 text-[13px]" value={eName} onChange={(e) => setEName(e.target.value)} maxLength={60} />
                     ) : (
@@ -144,6 +145,7 @@ export default function MyCards() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
     </AppLayout>

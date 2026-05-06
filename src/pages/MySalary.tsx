@@ -124,6 +124,7 @@ export default function MySalary() {
         {history.length === 0 ? (
           <div className="py-10 text-center text-[12px] text-muted-foreground">No salary records yet.</div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="label-mono">
@@ -136,12 +137,12 @@ export default function MySalary() {
             <tbody>
               {history.map((h) => (
                 <tr key={h.id} className="group h-11 border-t border-border">
-                  <td className="num px-5 text-[13px]">
+                  <td className="num px-5 text-[13px] whitespace-nowrap">
                     {new Date(h.month).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })}
                   </td>
                   <td className="px-5 text-[13px]">
-                    <span className="inline-flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: walletColor(h.wallet_account_id) }} />
+                    <span className="inline-flex items-center gap-2 max-w-[150px] truncate">
+                      <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: walletColor(h.wallet_account_id) }} />
                       {walletName(h.wallet_account_id)}
                     </span>
                   </td>
@@ -159,6 +160,7 @@ export default function MySalary() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
     </AppLayout>

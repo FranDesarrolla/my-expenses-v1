@@ -160,6 +160,7 @@ export default function ExtraIncomePage() {
         {items.length === 0 ? (
           <div className="py-10 text-center text-[12px] text-muted-foreground">No extra income yet.</div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="label-mono">
@@ -176,14 +177,14 @@ export default function ExtraIncomePage() {
                 const w = wallets.find((x) => x.id === i.wallet_account_id);
                 return (
                   <tr key={i.id} className="group h-11 border-t border-border">
-                    <td className="num px-5 text-[12.5px] text-muted-foreground">
+                    <td className="num px-5 text-[12.5px] text-muted-foreground whitespace-nowrap">
                       {new Date(i.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}
                     </td>
-                    <td className="px-5 text-[13px]">{i.concept}</td>
+                    <td className="px-5 text-[13px] max-w-[120px] truncate">{i.concept}</td>
                     <td className="px-5 text-[12.5px]">
                       {w ? (
-                        <span className="inline-flex items-center gap-2">
-                          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: w.color }} />
+                        <span className="inline-flex items-center gap-2 max-w-[120px] truncate">
+                          <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: w.color }} />
                           {w.name}
                         </span>
                       ) : <span className="text-muted-foreground">—</span>}
@@ -204,6 +205,7 @@ export default function ExtraIncomePage() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </section>
     </AppLayout>

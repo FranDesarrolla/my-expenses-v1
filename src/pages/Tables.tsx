@@ -3,6 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+} from "@/components/ui/dialog";
 import { Plus, Trash2, Pencil, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -21,37 +24,34 @@ export default function Tables() {
   const [tab, setTab] = useState<Tab>("categories");
   return (
     <AppLayout title="Manage" subtitle="Manage categories, cards and wallet accounts.">
-      <div className="mb-6 inline-flex items-center gap-1 rounded-full border border-border bg-surface p-1">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={cn(
-              "rounded-full px-4 py-1.5 text-[12.5px] transition-colors",
-              tab === t.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <div className="inline-flex items-center gap-1 rounded-full border border-border bg-surface p-1">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={cn(
+                "rounded-full px-4 py-1.5 text-[12.5px] transition-colors",
+                tab === t.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {tab === "categories" && <AddButton table="categories" placeholder="Category name (e.g. Food)" />}
+        {tab === "cards" && <AddButton table="cards" placeholder="Card name (e.g. Chase Sapphire)" />}
+        {tab === "wallets" && <AddButton table="wallet_accounts" placeholder="Account name (e.g. Mercado Pago)" />}
       </div>
       {TABS.map((t) => tab === t.id && <CrudTable key={t.id} table={t.table} placeholder={t.placeholder} />)}
     </AppLayout>
   );
 }
 
-function CrudTable({ table, placeholder }: { table: "categories" | "cards" | "wallet_accounts"; placeholder: string }) {
-  const [items, setItems] = useState<Row[]>([]);
+function AddButton({ table, placeholder }: { table: "categories" | "cards" | "wallet_accounts"; placeholder: string }) {
+  const [addOpen, setAddOpen] = useState(false);
   const [name, setName] = useState("");
   const [color, setColor] = useState("#D97757");
-  const [editing, setEditing] = useState<Row | null>(null);
-
-  useEffect(() => { void load(); }, [table]);
-
-  async function load() {
-    const { data } = await supabase.from(table).select("*").order("name");
-    setItems((data ?? []) as Row[]);
-  }
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
@@ -59,7 +59,53 @@ function CrudTable({ table, placeholder }: { table: "categories" | "cards" | "wa
     const { error } = await supabase.from(table).insert({ name: name.trim(), color });
     if (error) return toast.error(error.message);
     setName("");
-    void load();
+    setColor("#D97757");
+    setAddOpen(false);
+  }
+
+  return (
+    <Dialog open={addOpen} onOpenChange={setAddOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" className="gap-1.5">
+          <Plus className="h-3.5 w-3.5" strokeWidth={1.8} />
+          Add
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[400px]">
+        <DialogHeader>
+          <DialogTitle>Add {table === "categories" ? "Category" : table === "cards" ? "Card" : "Wallet"}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={add} className="space-y-4">
+          <div>
+            <div className="label-mono mb-2">Name</div>
+            <Input placeholder={placeholder} value={name} onChange={(e) => setName(e.target.value)} maxLength={60} autoFocus />
+          </div>
+          <div>
+            <div className="label-mono mb-2">Color</div>
+            <div className="flex items-center gap-2">
+              <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="h-9 w-12 cursor-pointer rounded border border-border bg-transparent" />
+              <Input className="num flex-1" value={color} onChange={(e) => setColor(e.target.value)} maxLength={7} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button type="submit">Add</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CrudTable({ table }: { table: "categories" | "cards" | "wallet_accounts" }) {
+  const [items, setItems] = useState<Row[]>([]);
+  const [editing, setEditing] = useState<Row | null>(null);
+
+  useEffect(() => { void load(); }, [table]);
+
+  async function load() {
+    const { data } = await supabase.from(table).select("*").order("name");
+    setItems((data ?? []) as Row[]);
   }
 
   async function remove(id: string) {
@@ -76,23 +122,9 @@ function CrudTable({ table, placeholder }: { table: "categories" | "cards" | "wa
     void load();
   }
 
-  return (
-    <>
-      <section className="mb-6 rounded-md border border-border bg-surface p-5">
-        <div className="label-mono mb-4">Add</div>
-        <form onSubmit={add} className="flex flex-wrap items-end gap-3">
-          <div className="flex-1 min-w-[200px]">
-            <Input placeholder={placeholder} value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
-          </div>
-          <div className="flex items-center gap-2">
-            <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="h-9 w-12 cursor-pointer rounded border border-border bg-transparent" />
-            <Input className="num w-28" value={color} onChange={(e) => setColor(e.target.value)} maxLength={7} />
-          </div>
-          <Button type="submit" size="icon"><Plus className="h-4 w-4" strokeWidth={1.5} /></Button>
-        </form>
-      </section>
-
-      <section className="rounded-md border border-border bg-surface">
+return (
+      <>
+      <section className="rounded-md border border-border bg-surface overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr className="label-mono border-b border-border">
@@ -134,7 +166,7 @@ function CrudTable({ table, placeholder }: { table: "categories" | "cards" | "wa
                         <button onClick={() => setEditing(null)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" strokeWidth={1.5} /></button>
                       </div>
                     ) : (
-                      <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100">
+                      <div className="flex justify-end gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100">
                         <button onClick={() => setEditing({ id: c.id, name: c.name, color: c.color })} className="text-muted-foreground hover:text-foreground">
                           <Pencil className="h-4 w-4" strokeWidth={1.5} />
                         </button>
