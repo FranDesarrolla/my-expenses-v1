@@ -6,6 +6,8 @@ import { MonthlyExpensesList } from "@/components/MonthlyExpensesList";
 import { startOfMonth } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
@@ -16,7 +18,6 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Plus } from "lucide-react";
 import { format, parseISO } from "date-fns";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 interface Category { id: string; name: string; color: string }
@@ -35,6 +36,7 @@ export default function MyExpenses() {
   const [walletId, setWalletId] = useState("");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [paid, setPaid] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -58,17 +60,31 @@ export default function MyExpenses() {
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) return toast.error("Enter an amount.");
     if (!categoryId) return toast.error("Pick a category.");
-    const { error } = await supabase.from("expenses").insert({
+    const { data: expense, error } = await supabase.from("expenses").insert({
       amount: amt,
       category_id: categoryId,
       wallet_account_id: walletId || null,
       description: description.trim() || null,
       date,
-    });
+    }).select().single();
     if (error) return toast.error(error.message);
+    
+    if (paid && expense) {
+      const today = format(new Date(), "yyyy-MM-dd");
+      await supabase.from("expense_payments" as any).insert({
+        expense_id: expense.id,
+        amount: amt,
+        wallet_account_id: walletId || null,
+        date: today,
+        paid: true,
+        paid_at: today,
+      } as any);
+    }
+    
     toast.success("Expense recorded.");
     setAmount("");
     setDescription("");
+    setPaid(false);
     setOpen(false);
     setRefreshKey((k) => k + 1);
   }
@@ -153,6 +169,18 @@ export default function MyExpenses() {
                       <Calendar mode="single" selected={parseISO(date)} onSelect={(d) => d && setDate(format(d, "yyyy-MM-dd"))} initialFocus className={cn("p-3 pointer-events-auto")} />
                     </PopoverContent>
                   </Popover>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="label-mono">Paid</div>
+                  <div className="flex items-center gap-2">
+                    <Switch checked={paid} onCheckedChange={setPaid} />
+                    <span className={cn(
+                      "num rounded px-1.5 py-0.5 text-[10px]",
+                      paid ? "bg-success/15 text-success" : "bg-secondary text-muted-foreground"
+                    )}>
+                      {paid ? "Paid" : "Unpaid"}
+                    </span>
+                  </div>
                 </div>
                 <DialogFooter>
                   <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>

@@ -284,6 +284,39 @@ const monthCardPays = allCardPays.filter(p => p.month === ms);
   const topCats = byCategory.slice(0, 5);
   const totalForPct = byCategory.reduce((s, x) => s + x.value, 0) || 1;
 
+  const incomeVsSpentChart = useMemo(() => {
+    if (totalIncome === 0) return [];
+    const remaining = Math.max(0, totalIncome - spent);
+    return [
+      { name: "Spent", value: spent, color: "#ef4444" },
+      { name: "Remaining", value: remaining, color: "#22c55e" },
+    ];
+  }, [totalIncome, spent]);
+
+  const dailySpending = useMemo(() => {
+    const dayMap: Record<number, number> = {};
+    expenses.filter((e) => isExpensePaid(e.id)).forEach((e) => {
+      const day = new Date(e.date + "T00:00:00").getDate();
+      dayMap[day] = (dayMap[day] || 0) + Number(e.amount);
+    });
+    fixed.filter((f) => isFixedPaid(f.id)).forEach((f) => {
+      const payment = fixedPays.find(p => p.fixed_expense_id === f.id);
+      if (payment?.paid_at) {
+        const day = new Date(payment.paid_at + "T00:00:00").getDate();
+        dayMap[day] = (dayMap[day] || 0) + Number(payment.amount ?? Number(f.amount));
+      }
+    });
+    cardPays.filter((p) => p.month === monthISO).forEach((p) => {
+      const day = new Date(p.month + "-15").getDate();
+      dayMap[day] = (dayMap[day] || 0) + Number(p.amount);
+    });
+    const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+    return Array.from({ length: daysInMonth }, (_, i) => ({
+      day: i + 1,
+      amount: dayMap[i + 1] || 0,
+    }));
+  }, [expenses, fixed, fixedPays, cardPays, monthISO, month]);
+
   return (
     <AppLayout
       title="Home"
@@ -436,6 +469,97 @@ const monthCardPays = allCardPays.filter(p => p.month === ms);
                         <Cell key={i} fill={m.current ? "hsl(var(--primary))" : "hsl(var(--border))"} />
                       ))}
                     </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Panel>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Panel className="flex flex-col">
+              <PanelHeader title="Income vs Spent" />
+              {totalIncome === 0 ? (
+                <Empty>No income data</Empty>
+              ) : (
+                <>
+                  <div className="flex-1 min-h-[200px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={incomeVsSpentChart}
+                          dataKey="value"
+                          innerRadius={55}
+                          outerRadius={85}
+                          stroke="hsl(var(--surface))"
+                          strokeWidth={2}
+                        >
+                          {incomeVsSpentChart.map((d, i) => (
+                            <Cell key={i} fill={d.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#1a1a1a',
+                            color: '#ffffff',
+                            border: '1px solid #333333'
+                          }}
+                          labelStyle={{ color: '#ffffff' }}
+                          itemStyle={{ color: '#ffffff' }}
+                          formatter={(v: number) => formatMoney(v)}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <ul className="mt-3 space-y-1.5">
+                    {incomeVsSpentChart.map((d) => (
+                      <li key={d.name} className="flex items-center justify-between text-[12px]">
+                        <span className="flex items-center gap-2">
+                          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: d.color }} />
+                          {d.name}
+                        </span>
+                        <span className="num text-muted-foreground">
+                          {((d.value / totalIncome) * 100).toFixed(1)}%
+                        </span>
+                      </li>
+                    ))}
+                    <li className="flex items-center justify-between text-[12px] pt-2 border-t border-border">
+                      <span className="flex items-center gap-2">Income Limit</span>
+                      <span className="num text-foreground">{formatMoney(totalIncome)}</span>
+                    </li>
+                  </ul>
+                </>
+              )}
+            </Panel>
+
+            <Panel className="flex flex-col">
+              <PanelHeader title="Daily Spending" />
+              <div className="flex-1 min-h-[200px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={dailySpending} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="2 4" vertical={false} />
+                    <XAxis
+                      dataKey="day"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10, fontFamily: "Geist Mono" }}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      width={40}
+                      tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10, fontFamily: "Geist Mono" }}
+                      tickFormatter={(v) => `$${v}`}
+                    />
+                    <Tooltip
+                      cursor={{ fill: "hsl(var(--accent))" }}
+                      contentStyle={{
+                        backgroundColor: '#1a1a1a',
+                        color: '#ffffff',
+                        border: '1px solid #333333'
+                      }}
+                      formatter={(v: number) => formatMoney(v)}
+                    />
+                    <Bar dataKey="amount" fill="hsl(var(--primary))" radius={[2, 2, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

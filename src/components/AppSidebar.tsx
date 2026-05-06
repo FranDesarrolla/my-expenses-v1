@@ -15,6 +15,7 @@ import {
   Settings,
   Sparkles,
   LogOut,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { useTheme } from "@/lib/theme";
@@ -135,7 +136,11 @@ function NavGroup({ group }: { group: GroupItem }) {
   );
 }
 
-export function AppSidebar() {
+interface AppSidebarProps {
+  onCloseMobile?: () => void;
+}
+
+export function AppSidebar({ onCloseMobile }: AppSidebarProps) {
   const { theme, toggle } = useTheme();
   const navigate = useNavigate();
 
@@ -146,14 +151,26 @@ export function AppSidebar() {
 
   return (
     <aside className="flex h-screen max-h-screen w-[240px] flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar">
-      <div className="flex flex-col gap-1 px-5 pb-6 pt-7">
-        <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-          Personal Ledger
+      <div className="flex items-center justify-between px-5 pb-6 pt-7">
+        <div className="flex flex-col gap-1">
+          <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+            Personal Ledger
+          </div>
+          <div className="flex items-baseline gap-2">
+            <div className="text-[20px] font-medium tracking-tight text-foreground">Ledger</div>
+            <div className="num text-[11px] text-muted-foreground">v1.0</div>
+          </div>
         </div>
-        <div className="flex items-baseline gap-2">
-          <div className="text-[20px] font-medium tracking-tight text-foreground">Ledger</div>
-          <div className="num text-[11px] text-muted-foreground">v1.0</div>
-        </div>
+        {onCloseMobile && (
+          <button
+            type="button"
+            onClick={onCloseMobile}
+            className="lg:hidden p-2 -mr-2 text-muted-foreground hover:text-foreground"
+            aria-label="Close menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3">

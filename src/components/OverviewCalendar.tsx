@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ChevronLeft, ChevronRight, Trash2, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, Plus, ArrowRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
@@ -39,6 +39,15 @@ interface CalendarItem {
   amount: number;
 }
 
+interface Transfer {
+  id: string;
+  from_wallet_id: string | null;
+  to_wallet_id: string | null;
+  amount: number;
+  date: string;
+  notes: string | null;
+}
+
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function OverviewCalendar({ month }: OverviewCalendarProps) {
@@ -46,6 +55,8 @@ export function OverviewCalendar({ month }: OverviewCalendarProps) {
   const [incomeData, setIncomeData] = React.useState<{ date: string; items: CalendarItem[] }[]>([]);
   const [expenseData, setExpenseData] = React.useState<{ date: string; items: CalendarItem[] }[]>([]);
   const [reminders, setReminders] = React.useState<Reminder[]>([]);
+  const [transfers, setTransfers] = React.useState<Transfer[]>([]);
+  const [wallets, setWallets] = React.useState<Wallet[]>([]);
   const [selectedDate, setSelectedDate] = React.useState<Date | null>(null);
   const [addingReminder, setAddingReminder] = React.useState(false);
   const [newReminder, setNewReminder] = React.useState({
@@ -81,19 +92,24 @@ export function OverviewCalendar({ month }: OverviewCalendarProps) {
       walletsData,
       cardsData,
       remindersData,
+      transfersData,
     ] = await Promise.all([
       supabase.from("salary").select("month, amount, wallet_account_id"),
       supabase.from("extra_income" as any).select("date, amount, concept, wallet_account_id"),
       supabase.from("expenses").select("id, amount, date, category_id, wallet_account_id"),
       (supabase.from("expense_payments" as any).select("expense_id, paid, paid_at") as any),
-      (supabase.from("fixed_expense_payments" as any).select("fixed_expense_id, paid, paid_at") as any),
+      (supabase.from("fixed_expense_payments" as any).select("fixed_expense_id, paid, paid_at, amount") as any),
       supabase.from("fixed_expenses").select("id, description, wallet_account_id, amount"),
       (supabase.from("card_payments" as any).select("card_id, wallet_account_id, amount, date") as any),
       supabase.from("categories").select("id, name"),
       supabase.from("wallet_accounts").select("id, name"),
       supabase.from("cards").select("id, name"),
       (supabase.from("reminders" as any).select("*") as any),
+      supabase.from("wallet_transfers").select("*"),
     ]);
+
+    setTransfers((transfersData.data ?? []) as Transfer[]);
+    setWallets((walletsData.data ?? []) as Wallet[]);
 
     setReminders(remindersData.data ?? []);
 
@@ -155,7 +171,7 @@ export function OverviewCalendar({ month }: OverviewCalendarProps) {
     });
 
     // Fixed expense payments with paid_at
-    (fixedPaymentsData.data ?? []).forEach((p: { fixed_expense_id: string; paid: boolean; paid_at: string | null }) => {
+    (fixedPaymentsData.data ?? []).forEach((p: { fixed_expense_id: string; paid: boolean; paid_at: string | null; amount: number | null }) => {
       if (p.paid && p.paid_at) {
         const date = p.paid_at.slice(0, 10);
         const fixedExpense = fixedExpenses.find(f => f.id === p.fixed_expense_id);
@@ -164,7 +180,7 @@ export function OverviewCalendar({ month }: OverviewCalendarProps) {
           type: "fixed",
           name: fixedExpense?.description ?? "Fixed Expense",
           wallet: getWalletName(fixedExpense?.wallet_account_id ?? null),
-          amount: Number(fixedExpense?.amount ?? 0),
+          amount: Number(p.amount ?? fixedExpense?.amount ?? 0),
         });
       }
     });
@@ -246,6 +262,13 @@ export function OverviewCalendar({ month }: OverviewCalendarProps) {
     const dateStr = format(date, "yyyy-MM-dd");
     return reminders.filter(r => r.date === dateStr && !r.dismissed);
   };
+
+  const getTransfersForDate = (date: Date) => {
+    const dateStr = format(date, "yyyy-MM-dd");
+    return transfers.filter(t => t.date === dateStr);
+  };
+
+  const walletName = (id: string | null) => wallets.find(w => w.id === id)?.name ?? "—";
 
   const COLORS = ["#3b82f6", "#22c55e", "#ef4444", "#f59e0b", "#a855f7", "#ec4899"];
 
@@ -333,7 +356,9 @@ export function OverviewCalendar({ month }: OverviewCalendarProps) {
               const hasExpense = dayItems.expenses.length > 0;
               const dayReminders = getRemindersForDate(day);
               const hasReminders = dayReminders.length > 0;
-              const hasDots = hasIncome || hasExpense || hasReminders;
+              const dayTransfers = getTransfersForDate(day);
+              const hasTransfer = dayTransfers.length > 0;
+              const hasDots = hasIncome || hasExpense || hasReminders || hasTransfer;
 
               return (
                 <div
@@ -350,16 +375,21 @@ export function OverviewCalendar({ month }: OverviewCalendarProps) {
                     <span className={cn(isToday(day) && "font-bold bg-accent px-1.5 py-0.5 rounded")}>
                       {format(day, "d")}
                     </span>
-                    <div className="flex gap-1 mt-1 flex-wrap content-start">
+                    <div className="flex flex-col gap-0.5 mt-1">
                       {hasIncome && (
-                        <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                        <span className="text-[8px] font-medium px-1 py-0.5 rounded bg-success/20 text-success text-center">Income</span>
                       )}
                       {hasExpense && (
-                        <span className="h-1.5 w-1.5 rounded-full bg-destructive" />
+                        <span className="text-[8px] font-medium px-1 py-0.5 rounded bg-destructive/20 text-destructive text-center">Expense</span>
                       )}
                       {dayReminders.map((r, i) => (
-                        <span key={i} className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: r.color }} />
+                        <span key={i} className="text-[8px] font-medium px-1 py-0.5 rounded text-center" style={{ backgroundColor: `${r.color}20`, color: r.color }}>
+                          Reminder
+                        </span>
                       ))}
+                      {hasTransfer && (
+                        <span className="text-[8px] font-medium px-1 py-0.5 rounded bg-primary/20 text-primary text-center">Transfer</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -370,9 +400,18 @@ export function OverviewCalendar({ month }: OverviewCalendarProps) {
       </div>
 
       <Dialog open={!!selectedDate} onOpenChange={() => { setSelectedDate(null); setAddingReminder(false); }}>
-        <DialogContent className="w-80 max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="w-[480px] max-h-[80vh] overflow-y-auto [&_[data-radix-dialog-close]]:!top-2">
+          <DialogHeader className="flex flex-row items-center justify-between">
             <DialogTitle>{selectedDate && format(selectedDate, "MMMM d, yyyy")}</DialogTitle>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setAddingReminder(true)}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
           </DialogHeader>
           <div className="space-y-3">
             <div>
@@ -399,13 +438,6 @@ export function OverviewCalendar({ month }: OverviewCalendarProps) {
               ) : (
                 <div className="text-[10px] text-muted-foreground">No reminders</div>
               )}
-              <button
-                type="button"
-                onClick={() => setAddingReminder(true)}
-                className="mt-2 flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
-              >
-                <Plus className="h-3 w-3" /> Add Reminder
-              </button>
             </div>
 
             {selectedDate && getDayItems(selectedDate).incomes.length > 0 && (
@@ -426,6 +458,22 @@ export function OverviewCalendar({ month }: OverviewCalendarProps) {
                   <div key={i} className="text-[11px] flex justify-between">
                     <span className="text-muted-foreground">{item.name} ({item.wallet})</span>
                     <span className="num text-foreground">{formatMoney(item.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {selectedDate && getTransfersForDate(selectedDate).length > 0 && (
+              <div>
+                <div className="text-[10px] font-medium text-primary mb-1">TRANSFERS</div>
+                {getTransfersForDate(selectedDate).map((t) => (
+                  <div key={t.id} className="text-[11px] flex justify-between">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      {walletName(t.from_wallet_id)}
+                      <ArrowRight className="h-3 w-3" />
+                      {walletName(t.to_wallet_id)}
+                      {t.notes && <span className="text-[10px] ml-1">({t.notes})</span>}
+                    </span>
+                    <span className="num text-foreground">{formatMoney(Number(t.amount))}</span>
                   </div>
                 ))}
               </div>

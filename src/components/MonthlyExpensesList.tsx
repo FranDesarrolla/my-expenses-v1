@@ -73,6 +73,16 @@ export function MonthlyExpensesList({ month, interactive = false, refreshKey = 0
   const [payDialogOpen, setPayDialogOpen] = useState(false);
   const [payDialogAmount, setPayDialogAmount] = useState("");
   const [payDialogFixedExpense, setPayDialogFixedExpense] = useState<FixedExpense | null>(null);
+  const [editExpenseDialogOpen, setEditExpenseDialogOpen] = useState(false);
+  const [editExpenseData, setEditExpenseData] = useState<{
+    id: string;
+    amount: string;
+    description: string;
+    category_id: string;
+    wallet_account_id: string;
+    date: string;
+    paid: boolean;
+  } | null>(null);
 
   const monthISO = startOfMonthISO(month);
 
@@ -249,18 +259,51 @@ export function MonthlyExpensesList({ month, interactive = false, refreshKey = 0
   }
 
   async function saveExpenseEdit() {
-    if (edit?.kind !== "expense") return;
-    const amt = parseFloat(edit.amount);
+    if (!editExpenseData) return;
+    const amt = parseFloat(editExpenseData.amount);
     if (!amt || amt <= 0) return toast.error("Amount required.");
+    
     const { error } = await supabase.from("expenses").update({
       amount: amt,
-      description: edit.description.trim() || null,
-      category_id: edit.category_id || null,
-      wallet_account_id: edit.wallet_account_id || null,
-      date: edit.date,
-    }).eq("id", edit.id);
+      description: editExpenseData.description.trim() || null,
+      category_id: editExpenseData.category_id || null,
+      wallet_account_id: editExpenseData.wallet_account_id || null,
+      date: editExpenseData.date,
+    }).eq("id", editExpenseData.id);
     if (error) return toast.error(error.message);
+    
+    const today = format(new Date(), "yyyy-MM-dd");
+    const existingPayment = expensePayments.find(p => p.expense_id === editExpenseData.id && p.paid);
+    
+    if (editExpenseData.paid) {
+      if (existingPayment) {
+        await supabase.from("expense_payments" as any)
+          .update({ 
+            amount: amt,
+            wallet_account_id: editExpenseData.wallet_account_id || null,
+            paid: true, 
+            paid_at: today 
+          } as any)
+          .eq("expense_id", editExpenseData.id);
+      } else {
+        await supabase.from("expense_payments" as any).insert({
+          expense_id: editExpenseData.id,
+          amount: amt,
+          wallet_account_id: editExpenseData.wallet_account_id || null,
+          date: today,
+          paid: true,
+          paid_at: today,
+        } as any);
+      }
+    } else if (existingPayment) {
+      await supabase.from("expense_payments" as any)
+        .update({ paid: false, paid_at: null } as any)
+        .eq("expense_id", editExpenseData.id);
+    }
+    
     toast.success("Expense updated.");
+    setEditExpenseDialogOpen(false);
+    setEditExpenseData(null);
     void load();
   }
 
@@ -457,43 +500,10 @@ export function MonthlyExpensesList({ month, interactive = false, refreshKey = 0
             <tbody>
               {expenses.map((e) => {
                 const cat = cats.find((c) => c.id === e.category_id);
-                const isEditing = edit?.kind === "expense" && edit.id === e.id;
-                if (isEditing) {
-                  return (
-                    <tr key={e.id} className="border-t border-border bg-accent/30">
-                      <td className="px-4 py-2">
-                        <Input type="date" value={edit.date}
-                          onChange={(ev) => setEdit({ ...edit, date: ev.target.value })}
-                          className="h-8 num text-[12px]" />
-                      </td>
-                      <td className="px-4 py-2">
-                        <Input value={edit.description}
-                          onChange={(ev) => setEdit({ ...edit, description: ev.target.value })}
-                          className="h-8 text-[12.5px]" />
-                      </td>
-                      <td className="px-4 py-2">
-                        <CategorySelect cats={cats} value={edit.category_id}
-                          onChange={(v) => setEdit({ ...edit, category_id: v })} />
-                      </td>
-                      <td className="px-4 py-2 text-right">
-                        <Input value={edit.amount} inputMode="decimal"
-                          onChange={(ev) => setEdit({ ...edit, amount: ev.target.value })}
-                          className="num h-8 text-right text-[12.5px]" />
-                      </td>
-                      <td className="px-4 text-right">
-                        <WalletSelect wallets={wallets} value={edit.wallet_account_id}
-                          onChange={(v) => setEdit({ ...edit, wallet_account_id: v })} />
-                      </td>
-                      <td className="px-2 text-right">
-                        <EditActions onSave={saveExpenseEdit} onCancel={() => setEdit(null)} />
-                      </td>
-                    </tr>
-                  );
-                }
                 return (
                   <tr key={e.id} className="group h-11 border-t border-border">
                     <td className="num px-4 text-[12px] text-muted-foreground">
-                      {format(new Date(e.date), "MMM dd")}
+                      {format(new Date(e.date + "T00:00:00"), "MMM dd")}
                     </td>
                     <td className="px-4 text-[13px]">{e.description ?? "—"}</td>
                     <td className="px-4 text-[13px]">
@@ -510,14 +520,19 @@ export function MonthlyExpensesList({ month, interactive = false, refreshKey = 0
                     {interactive && (
                       <td className="px-4 text-right">
                         <RowActions
-                          onEdit={() => setEdit({
-                            kind: "expense", id: e.id,
-                            amount: String(e.amount),
-                            description: e.description ?? "",
-                            category_id: e.category_id ?? "",
-                            wallet_account_id: e.wallet_account_id ?? "",
-                            date: e.date,
-                          })}
+                          onEdit={() => {
+                            const payment = expensePayments.find(p => p.expense_id === e.id && p.paid);
+                            setEditExpenseData({
+                              id: e.id,
+                              amount: String(e.amount),
+                              description: e.description ?? "",
+                              category_id: e.category_id ?? "",
+                              wallet_account_id: e.wallet_account_id ?? "",
+                              date: e.date,
+                              paid: payment?.paid ?? false,
+                            });
+                            setEditExpenseDialogOpen(true);
+                          }}
                           onDelete={() => deleteExpense(e.id)}
                         />
                       </td>
@@ -787,6 +802,88 @@ export function MonthlyExpensesList({ month, interactive = false, refreshKey = 0
             <Button type="button" variant="ghost" onClick={() => setPayDialogOpen(false)}>Cancel</Button>
             <Button type="button" onClick={confirmPayFixedExpense}>Confirm Payment</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editExpenseDialogOpen} onOpenChange={(open) => { if (!open) { setEditExpenseDialogOpen(false); setEditExpenseData(null); } }}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Edit Expense</DialogTitle>
+          </DialogHeader>
+          {editExpenseData && (
+            <form onSubmit={(e) => { e.preventDefault(); saveExpenseEdit(); }} className="space-y-4">
+              <div>
+                <div className="label-mono mb-2">Amount</div>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">$</span>
+                  <Input className="num pl-6 text-[15px]" placeholder="0.00"
+                    value={editExpenseData.amount} inputMode="decimal" autoFocus
+                    onChange={(e) => setEditExpenseData({ ...editExpenseData, amount: e.target.value })} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="label-mono mb-2">Category</div>
+                  <Select value={editExpenseData.category_id} onValueChange={(v) => setEditExpenseData({ ...editExpenseData, category_id: v })}>
+                    <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectContent>
+                      {cats.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          <span className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: c.color }} />
+                            {c.name}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <div className="label-mono mb-2">Wallet</div>
+                  <Select value={editExpenseData.wallet_account_id} onValueChange={(v) => setEditExpenseData({ ...editExpenseData, wallet_account_id: v })}>
+                    <SelectTrigger><SelectValue placeholder="Account" /></SelectTrigger>
+                    <SelectContent>
+                      {wallets.map((w) => (
+                        <SelectItem key={w.id} value={w.id}>
+                          <span className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: w.color }} />
+                            {w.name}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div>
+                <div className="label-mono mb-2">Description</div>
+                <Input placeholder="Optional note" value={editExpenseData.description}
+                  onChange={(e) => setEditExpenseData({ ...editExpenseData, description: e.target.value })} maxLength={200} />
+              </div>
+              <div>
+                <div className="label-mono mb-2">Date</div>
+                <Input type="date" value={editExpenseData.date}
+                  onChange={(e) => setEditExpenseData({ ...editExpenseData, date: e.target.value })}
+                  className="num text-[12px]" />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="label-mono">Paid</div>
+                <div className="flex items-center gap-2">
+                  <Switch checked={editExpenseData.paid} onCheckedChange={(checked) => setEditExpenseData({ ...editExpenseData, paid: checked })} />
+                  <span className={cn(
+                    "num rounded px-1.5 py-0.5 text-[10px]",
+                    editExpenseData.paid ? "bg-success/15 text-success" : "bg-secondary text-muted-foreground"
+                  )}>
+                    {editExpenseData.paid ? "Paid" : "Unpaid"}
+                  </span>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="ghost" onClick={() => { setEditExpenseDialogOpen(false); setEditExpenseData(null); }}>Cancel</Button>
+                <Button type="submit">Save Changes</Button>
+              </DialogFooter>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
     </div>
