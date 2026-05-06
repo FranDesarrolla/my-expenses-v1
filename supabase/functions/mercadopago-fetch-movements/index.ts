@@ -8,6 +8,81 @@ const corsHeaders = {
 
 const MP_API_URL = "https://api.mercadopago.com";
 
+async function downloadReport(accessToken: string, fileName: string): Promise<string> {
+  const response = await fetch(
+    `${MP_API_URL}/v1/account/settlement_report/${fileName}`,
+    { headers: { "Authorization": `Bearer ${accessToken}` } }
+  );
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to download report: ${response.status} - ${text}`);
+  }
+
+  return await response.text();
+}
+
+function parseCSV(csvText: string): any[] {
+  const lines = csvText.trim().split("\n");
+  if (lines.length < 2) return [];
+
+  const headers = lines[0].split(";").map((h: string) => h.trim().toUpperCase());
+  const movements: any[] = [];
+
+  const getIdx = (key: string) => headers.indexOf(key);
+
+  const colSourceId = getIdx("SOURCE_ID");
+  const colTransactionDate = getIdx("TRANSACTION_DATE");
+  const colTransactionAmount = getIdx("TRANSACTION_AMOUNT");
+  const colSettlementNetAmount = getIdx("SETTLEMENT_NET_AMOUNT");
+  const colTransactionType = getIdx("TRANSACTION_TYPE");
+  const colCurrency = getIdx("TRANSACTION_CURRENCY");
+  const colExternalRef = getIdx("EXTERNAL_REFERENCE");
+
+  const typesFound = new Set<string>();
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = lines[i].split(";").map((v: string) => v.trim().replace(/^"|"$/g, ""));
+
+    if (values.length < headers.length) continue;
+
+    const transactionType = colTransactionType >= 0 ? values[colTransactionType] : "";
+    typesFound.add(transactionType);
+
+    const amount = colSettlementNetAmount >= 0
+      ? parseFloat(values[colSettlementNetAmount])
+      : (colTransactionAmount >= 0 ? parseFloat(values[colTransactionAmount]) : 0);
+
+    if (isNaN(amount) || amount === 0) continue;
+
+    const date = colTransactionDate >= 0 ? values[colTransactionDate] : "";
+    const sourceId = colSourceId >= 0 ? values[colSourceId] : `mov-${i}`;
+    const currency = colCurrency >= 0 ? values[colCurrency] : "ARS";
+    const externalRef = colExternalRef >= 0 ? values[colExternalRef] : "";
+
+    const desc = transactionType === "SETTLEMENT" 
+      ? (externalRef || "Cobro")
+      : transactionType === "WITHDRAWAL"
+        ? "Transferencia/Retiro"
+        : transactionType === "REFUND"
+          ? "Devolución"
+          : transactionType === "CHARGEBACK"
+            ? "Chargeback"
+            : transactionType || "Movimiento";
+
+    movements.push({
+      id: sourceId,
+      date: date,
+      amount: amount,
+      currency: currency,
+      description: desc,
+      type: transactionType,
+    });
+  }
+
+  return movements;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -30,45 +105,84 @@ serve(async (req) => {
 
     const accessToken = credentials.access_token;
     const url = new URL(req.url);
-    const month = url.searchParams.get("month");
-    
-    let endDate = new Date();
-    let startDate = new Date();
-    
-    if (month) {
-      const [year, monthNum] = month.split("-").map(Number);
-      startDate = new Date(year, monthNum - 1, 1);
-      endDate = new Date(year, monthNum, 1);
-      endDate.setDate(endDate.getDate() - 1);
-    } else {
-      const days = parseInt(url.searchParams.get("days") || "30");
-      startDate.setDate(startDate.getDate() - days);
-    }
-    
-    const formatDate = (d: Date) => d.toISOString().split("T")[0];
-    const movements: any[] = [];
+    const monthParam = url.searchParams.get("month");
 
-    const response = await fetch(
-      `${MP_API_URL}/v1/payments/search?sort=date_created&criteria=desc&limit=500&range=date_created&begin_date=${formatDate(startDate)}T00:00:00Z&end_date=${formatDate(endDate)}T23:59:59Z`,
+    let year: number, month: number;
+    if (monthParam) {
+      [year, month] = monthParam.split("-").map(Number);
+    } else {
+      const now = new Date();
+      year = now.getFullYear();
+      month = now.getMonth() + 1;
+    }
+
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0);
+
+    const listResponse = await fetch(
+      `${MP_API_URL}/v1/account/settlement_report/list?limit=10`,
       { headers: { "Authorization": `Bearer ${accessToken}` } }
     );
 
-    if (response.ok) {
-      const data = await response.json();
-      const payments = Array.isArray(data) ? data : data.results || [];
-      
-      for (const p of payments) {
-        const amount = parseFloat(p.transaction_amount || p.net_received_amount || 0);
-        if (!amount) continue;
-        
-        movements.push({
-          id: p.id,
-          date: p.date_created,
-          amount: amount,
-          description: p.description || p.payment_method_id || "Movimiento",
-        });
+    const monthStr = `${year}-${String(month).padStart(2, "0")}`;
+    let reportData: { id?: number; report_id?: number; file_name?: string } | null = null;
+
+    if (listResponse.ok) {
+      const listData = await listResponse.json();
+      const reports = listData.results || listData || [];
+
+      for (const report of reports) {
+        const beginDate = report.begin_date || "";
+        if (beginDate.startsWith(monthStr)) {
+          if (report.status === "ready" || report.status === "processed" || report.status === "finished") {
+            reportData = report;
+            break;
+          }
+        }
       }
     }
+
+    let fileName: string | null = null;
+
+    if (!reportData) {
+      const createResponse = await fetch(
+        `${MP_API_URL}/v1/account/settlement_report`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            begin_date: startDate.toISOString(),
+            end_date: endDate.toISOString(),
+            currency_id: "ARS",
+          }),
+        }
+      );
+
+      if (!createResponse.ok) {
+        const errorText = await createResponse.text();
+        throw new Error(`Failed to create report: ${createResponse.status} - ${errorText}`);
+      }
+
+      const createData = await createResponse.json();
+      fileName = createData.file_name;
+      reportData = createData;
+    }
+
+    if (!reportData || (!reportData.file_name && !fileName)) {
+      throw new Error("No report data returned from API");
+    }
+
+    fileName = fileName || reportData.file_name || "";
+
+    await new Promise((r) => setTimeout(r, 3000));
+
+    const csvContent = await downloadReport(accessToken, fileName);
+    const movements = parseCSV(csvContent);
+
+    const typesFound = [...new Set(movements.map(m => m.type))];
 
     movements.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
@@ -76,6 +190,8 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         movements: movements.slice(0, 100),
+        file_name: fileName,
+        types_found: typesFound,
         fetched_at: new Date().toISOString(),
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }

@@ -169,3 +169,42 @@ src/
 - Theme toggle (dark/light)
 - Sign out in sidebar
 - RLS enabled (authenticated users only)
+
+---
+
+## MercadoPago Integration
+
+### Pages
+
+- **MercadoPago:** `/mercadopago` - Connect API credentials, fetch monthly movements from Account Money API
+
+### Tables
+
+| Table | Key Fields |
+|-------|------------|
+| `mercado_pago_credentials` | id, user_id, public_key, access_token, country, created_at, updated_at |
+| `mercado_pago_movements` | id, user_id, external_id, transaction_date, type, amount, currency, description, status, created_at |
+
+### Backend Functions (Supabase Edge Functions)
+
+| Function | Endpoint | Purpose |
+|----------|----------|---------|
+| `mercadopago-check-credentials` | `/functions/v1/mercadopago-check-credentials` | Verify if user has stored credentials |
+| `mercadopago-save-credentials` | `/functions/v1/mercadopago-save-credentials` | Save/Update API credentials |
+| `mercadopago-fetch-movements` | `/functions/v1/mercadopago-fetch-movements?month=YYYY-MM` | Fetch movements from Account Money API |
+
+### Account Money API
+
+- **Base URL:** `https://api.mercadopago.com`
+- **Endpoints Used:**
+  - `GET /v1/account/settlement_report/list` - List existing reports
+  - `POST /v1/account/settlement_report` - Create new report
+  - `GET /v1/account/settlement_report/{file_name}` - Download CSV report
+- **Report Fields:** SOURCE_ID, TRANSACTION_DATE, TRANSACTION_AMOUNT, SETTLEMENT_NET_AMOUNT, TRANSACTION_TYPE, TRANSACTION_CURRENCY, EXTERNAL_REFERENCE
+- **Transaction Types:** SETTLEMENT (cobros), WITHDRAWAL (retiros/transferencias), REFUND (devoluciones), CHARGEBACK
+
+### UI Components
+
+- **Summary Cards:** In (green), Out (red), Net (green/red based on sign) - Display totals for selected month
+- **Movements Table:** Date, Description, Amount (green for positive, red for negative)
+- **Month Selector:** Filter movements by month (YYYY-MM)

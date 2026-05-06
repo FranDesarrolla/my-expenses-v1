@@ -27,8 +27,12 @@ export default function MercadoPago() {
   const [accessToken, setAccessToken] = useState("");
   
   const [movements, setMovements] = useState<Movement[]>([]);
-const [lastFetched, setLastFetched] = useState<string | null>(null);
+  const [lastFetched, setLastFetched] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
+
+  const totalIn = movements.filter(m => m.amount > 0).reduce((sum, m) => sum + m.amount, 0);
+  const totalOut = movements.filter(m => m.amount < 0).reduce((sum, m) => sum + Math.abs(m.amount), 0);
+  const totalNet = totalIn - totalOut;
 
   useEffect(() => {
     checkCredentials();
@@ -278,6 +282,25 @@ const [lastFetched, setLastFetched] = useState<string | null>(null);
             </div>
           )}
 
+          {!fetching && movements.length > 0 && (
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="rounded-md border border-border bg-surface p-4">
+                <div className="text-[11px] text-muted-foreground mb-1">In</div>
+                <div className="text-[18px] font-semibold text-success">{formatMoney(totalIn)}</div>
+              </div>
+              <div className="rounded-md border border-border bg-surface p-4">
+                <div className="text-[11px] text-muted-foreground mb-1">Out</div>
+                <div className="text-[18px] font-semibold text-destructive">{formatMoney(totalOut)}</div>
+              </div>
+              <div className="rounded-md border border-border bg-surface p-4">
+                <div className="text-[11px] text-muted-foreground mb-1">Net</div>
+                <div className={cn("text-[18px] font-semibold", totalNet >= 0 ? "text-success" : "text-destructive")}>
+                  {formatMoney(totalNet)}
+                </div>
+              </div>
+            </div>
+          )}
+
           {fetching && (
             <div className="flex items-center justify-center py-10 gap-2">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -310,7 +333,7 @@ const [lastFetched, setLastFetched] = useState<string | null>(null);
                       <td className="px-4 py-3 text-[12px] max-w-[200px] truncate">
                         {m.description}
                       </td>
-                      <td className="px-4 py-3 text-right text-[13px] font-medium num">
+                      <td className={cn("px-4 py-3 text-right text-[13px] font-medium num", m.amount >= 0 ? "text-success" : "text-destructive")}>
                         {formatMoney(m.amount)}
                       </td>
                     </tr>
